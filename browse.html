@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browse Issues – CivicFix</title>
+  <meta name="description" content="See what neighbours are reporting, confirm problems and track a report.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="index.html" aria-label="CivicFix home">
+        <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="#0F4C4A"/><path d="M14 5v18" stroke="#F5B800" stroke-width="3" stroke-dasharray="4 3"/><path d="M8 14h12" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+        CivicFix
+      </a>
+      <button class="menu-btn" id="menuBtn" aria-expanded="false" aria-controls="navLinks" aria-label="Open menu"><span></span><span></span><span></span></button>
+      <nav id="navLinks" class="links" aria-label="Main">
+        <a href="index.html">Home</a>
+        <a href="browse.html" aria-current="page">Browse Issues</a>
+        <a class="btn btn-report btn-sm" href="report.html">Report an Issue</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="page-head">
+      <svg class="head-people" viewBox="0 0 250 150" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><rect x="92" y="18" width="78" height="62" rx="6" fill="#fff" fill-opacity=".95"/><rect x="92" y="18" width="78" height="9" rx="4" fill="#F6B93B"/><rect x="98" y="33" width="30" height="16" rx="3" fill="#e5efed"/><rect x="134" y="33" width="30" height="16" rx="3" fill="#e5efed"/><rect x="98" y="55" width="30" height="16" rx="3" fill="#e5efed"/><rect x="134" y="55" width="30" height="16" rx="3" fill="#e5efed"/><circle cx="113" cy="41" r="4" fill="#D62828"/><circle cx="149" cy="41" r="4" fill="#F6B93B"/><circle cx="113" cy="63" r="4" fill="#2E9E6B"/><circle cx="149" cy="63" r="4" fill="#D62828"/><circle cx="164" cy="30" r="9" fill="#2E9E6B"/><path d="M160 30 l3 3 l6 -6" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><rect x="126" y="80" width="6" height="30" fill="#b9d6d0"/><rect x="130" y="108" width="-0" height="0"/><g transform="translate(45 146) scale(1)"><rect x="-9" y="-48" width="8" height="46" rx="3" fill="#D62828"/><rect x="1" y="-48" width="8" height="46" rx="3" fill="#D62828"/><ellipse cx="-6" cy="-1.5" rx="7" ry="3.2" fill="#14110f"/><ellipse cx="6" cy="-1.5" rx="7" ry="3.2" fill="#14110f"/><path d="M-14 -84 L-22 -50" stroke="#c68642" stroke-width="7" stroke-linecap="round"/><path d="M-14 -84 L-18.0 -67.0" stroke="#F6B93B" stroke-width="10" stroke-linecap="round"/><circle cx="-22" cy="-50" r="4.2" fill="#c68642"/><path d="M14 -84 L40 -104" stroke="#c68642" stroke-width="7" stroke-linecap="round"/><path d="M14 -84 L27.0 -94.0" stroke="#F6B93B" stroke-width="10" stroke-linecap="round"/><circle cx="40" cy="-104" r="4.2" fill="#c68642"/><rect x="-16" y="-94" width="32" height="58" rx="12" fill="#F6B93B"/><path d="M0 -42 V-36" stroke="#000" stroke-opacity=".2" stroke-width="1.4"/><path d="M-16 -50 H16" stroke="#F6B93B" stroke-width="1.6" stroke-dasharray="2 3"/><path d="M-15 -92 Q0 -70 15 -92" fill="none" stroke="#D62828" stroke-width="5" stroke-linecap="round"/><path d="M-15 -92 L-19 -48" stroke="#D62828" stroke-width="5" stroke-linecap="round"/><rect x="-4.5" y="-102" width="9" height="12" rx="3" fill="#c68642"/><circle cx="0" cy="-113" r="14" fill="#c68642"/><path d="M-14.5 -114 a14.5 14.5 0 0 1 29 0 q-8 -7 -14.5 -6 q-6.5 -1 -14.5 6z" fill="#1b1410"/><circle cx="0" cy="-131" r="7" fill="#1b1410"/><circle cx="0" cy="-116.5" r="1.8" fill="#D62828"/><circle cx="-14" cy="-108" r="1.7" fill="#F6B93B"/><circle cx="14" cy="-108" r="1.7" fill="#F6B93B"/><circle cx="-5" cy="-112" r="1.7" fill="#2b1d16"/><circle cx="5" cy="-112" r="1.7" fill="#2b1d16"/><path d="M-4.5 -105 q4.5 4.5 9 0" fill="none" stroke="#2b1d16" stroke-width="1.6" stroke-linecap="round"/></g><g transform="translate(205 146) scale(1)"><rect x="-10" y="-48" width="9" height="46" rx="3" fill="#2b3a55"/><rect x="1" y="-48" width="9" height="46" rx="3" fill="#2b3a55"/><ellipse cx="-6" cy="-1.5" rx="7" ry="3.2" fill="#14110f"/><ellipse cx="6" cy="-1.5" rx="7" ry="3.2" fill="#14110f"/><path d="M-14 -84 L-16 -92" stroke="#8d5524" stroke-width="7" stroke-linecap="round"/><path d="M-14 -84 L-15.2 -88.8" stroke="#6ea8fe" stroke-width="10" stroke-linecap="round"/><circle cx="-16" cy="-92" r="4.2" fill="#8d5524"/><path d="M14 -84 L22 -50" stroke="#8d5524" stroke-width="7" stroke-linecap="round"/><path d="M14 -84 L18.8 -63.6" stroke="#6ea8fe" stroke-width="10" stroke-linecap="round"/><circle cx="22" cy="-50" r="4.2" fill="#8d5524"/><rect x="-16" y="-94" width="32" height="54" rx="10" fill="#6ea8fe"/><path d="M-6 -94 L0 -84 L6 -94" fill="#fff"/><path d="M0 -84 V-42" stroke="#000" stroke-opacity=".2" stroke-width="1.4"/><rect x="-16" y="-46" width="32" height="5" fill="#3b2a1d"/><rect x="-4.5" y="-102" width="9" height="12" rx="3" fill="#8d5524"/><circle cx="0" cy="-113" r="14" fill="#8d5524"/><path d="M-14.5 -114 a14.5 14.5 0 0 1 29 0 q-8 -7 -14.5 -6 q-6.5 -1 -14.5 6z" fill="#1b1410"/><circle cx="-5" cy="-112" r="1.7" fill="#2b1d16"/><circle cx="5" cy="-112" r="1.7" fill="#2b1d16"/><path d="M-4.5 -105 q4.5 4.5 9 0" fill="none" stroke="#2b1d16" stroke-width="1.6" stroke-linecap="round"/><circle cx="-5" cy="-112" r="4" fill="none" stroke="#14110f" stroke-width="1.2"/><circle cx="5" cy="-112" r="4" fill="none" stroke="#14110f" stroke-width="1.2"/><path d="M-1 -112 h2" stroke="#14110f" stroke-width="1.2"/><rect x="-20" y="-100" width="11" height="18" rx="2.5" fill="#14110f"/><rect x="-18.5" y="-98" width="8" height="12" rx="1.5" fill="#6ea8fe"/><path d="M-17 -92 l2 2 l4 -4" fill="none" stroke="#fff" stroke-width="1.3"/></g></svg>
+      <div class="wrap">
+        <h1>Browse Issues</h1>
+        <p class="lead">See what neighbours are reporting right now. Confirm problems you have seen yourself to help them move up the queue.</p>
+      </div>
+    </section>
+
+    <section class="section alt">
+      <div class="wrap">
+        <div class="stats" aria-label="Platform statistics (demo data)">
+          <div class="stat"><span class="stat-num" id="statTotal">0</span><span class="stat-label">Total Reports</span></div>
+          <div class="stat"><span class="stat-num" id="statProgress">0</span><span class="stat-label">Issues in Progress</span></div>
+          <div class="stat resolved-stat"><span class="stat-num" id="statResolved">0</span><span class="stat-label">Resolved Issues</span></div>
+        </div>
+        <form class="track-box" id="trackForm" novalidate>
+          <label for="refInput">Track a report</label>
+          <div class="track-row">
+            <input id="refInput" type="text" placeholder="Enter a reference number, e.g. CF-2318">
+            <button type="submit" class="btn btn-ghost">Check status</button>
+          </div>
+          <p class="track-result" id="trackResult" role="status"></p>
+        </form>
+
+        <div class="filters" role="group" aria-label="Filter reports">
+          <button class="filter active" data-filter="all">All</button>
+          <button class="filter" data-filter="Pothole">Potholes</button>
+          <button class="filter" data-filter="Garbage">Garbage</button>
+          <button class="filter" data-filter="Streetlight">Streetlights</button>
+          <button class="filter" data-filter="Drainage">Drainage</button>
+        </div>
+        <div class="reports" id="reports"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap foot-inner">
+      <div>
+        <strong>CivicFix</strong>
+        <p class="muted">Helping neighbourhoods get small problems fixed before they become big ones.</p>
+      </div>
+      <nav aria-label="Footer">
+        <a href="index.html">Home</a>
+        <a href="browse.html">Browse Issues</a>
+        <a href="mailto:hello@civicfix.example">hello@civicfix.example</a>
+      </nav>
+    </div>
+    <div class="wrap copy">© <span id="year">2026</span> CivicFix. Demo project.</div>
+  </footer>
+  <button class="to-top" id="toTop" aria-label="Back to top" hidden>↑</button>
+  <script src="script.js"></script>
+</body>
+</html>
