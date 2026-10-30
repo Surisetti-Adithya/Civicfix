@@ -15,7 +15,7 @@ class OllamaProvider(AiProvider):
 
     @property
     def model_name(self) -> str:
-        return self._model_name
+        return self._model_name or settings.AI_MODEL_NAME or "gemma2:2b"
 
     async def generate_json(
         self,

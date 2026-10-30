@@ -60,12 +60,16 @@ def extract_json_from_text(text: str) -> Optional[dict]:
 
 class HostedGeminiProvider(AiProvider):
     def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None):
-        self._api_key = api_key or settings.GEMINI_API_KEY
-        self._model_name = model_name or settings.AI_MODEL_NAME
+        self._api_key = api_key
+        self._model_name = model_name
+
+    @property
+    def api_key(self) -> str:
+        return self._api_key or settings.GEMINI_API_KEY
 
     @property
     def model_name(self) -> str:
-        return self._model_name
+        return self._model_name or settings.AI_MODEL_NAME
 
     async def generate_json(
         self,
@@ -74,14 +78,17 @@ class HostedGeminiProvider(AiProvider):
         schema_class: Type[BaseModel],
         timeout_seconds: Optional[float] = None,
     ) -> Tuple[Optional[dict], int, str]:
-        if not self._api_key:
+        current_api_key = self.api_key
+        current_model = self.model_name
+
+        if not current_api_key:
             return None, 0, "NO_API_KEY"
 
         if timeout_seconds is None:
             timeout_seconds = settings.AI_TIMEOUT_SECONDS
 
         start_time = time.perf_counter()
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._model_name}:generateContent?key={self._api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent?key={current_api_key}"
 
         # JSON schema representation for structured output
         schema_json = json.dumps(schema_class.model_json_schema())
@@ -90,7 +97,7 @@ class HostedGeminiProvider(AiProvider):
             f"You MUST reply ONLY with valid JSON conforming to this schema:\n{schema_json}"
         )
 
-        is_gemma = "gemma" in self._model_name.lower()
+        is_gemma = "gemma" in current_model.lower()
 
         if is_gemma:
             # Gemma models on Gemini API do not support systemInstruction or responseMimeType="application/json" (causes HTTP 500)

@@ -28,10 +28,10 @@ class Settings(BaseSettings):
 
     # Gemma / AI settings
     AI_PROVIDER: str = "gemini"  # "gemini", "ollama", "fake", "disabled"
-    AI_MODEL_NAME: str = "gemini-2.5-flash"
+    AI_MODEL_NAME: str = "gemma-4-26b-a4b-it"
     GEMINI_API_KEY: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    AI_TIMEOUT_SECONDS: float = 15.0
+    AI_TIMEOUT_SECONDS: float = 30.0
     AI_MAX_RETRIES: int = 1
     AI_DESCRIPTION_MAX_CHARS: int = 1500
     AI_RATE_LIMIT_PER_MINUTE: int = 20
