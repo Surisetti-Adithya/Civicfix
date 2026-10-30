@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: civicfix-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-civicfix}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-civicfix_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-civicfix}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-civicfix} -d ${POSTGRES_DB:-civicfix}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: civicfix-backend
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-civicfix}:${POSTGRES_PASSWORD:-civicfix_secret}@db:5432/${POSTGRES_DB:-civicfix}
+      ENVIRONMENT: production
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      SECRET_KEY: ${SECRET_KEY:-civicfix_prod_secret_key_change_me}
+      UPLOAD_DIR: /app/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: civicfix-frontend
+    restart: always
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  uploads_data:
