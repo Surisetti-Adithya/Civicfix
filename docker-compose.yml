@@ -25,11 +25,18 @@ services:
     restart: always
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-civicfix}:${POSTGRES_PASSWORD:-civicfix_secret}@db:5432/${POSTGRES_DB:-civicfix}
-      ENVIRONMENT: production
-      AI_PROVIDER: ${AI_PROVIDER:-gemini}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      SECRET_KEY: ${SECRET_KEY:-civicfix_prod_secret_key_change_me}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      SECRET_KEY: ${SECRET_KEY:-civicfix_prod_secret_key_change_me_in_production}
       UPLOAD_DIR: /app/uploads
+      AUTO_SEED: ${AUTO_SEED:-true}
+      
+      # AI Provider Settings: "gemini" (hosted) or "ollama" (local container) or "fake"
+      AI_PROVIDER: ${AI_PROVIDER:-gemini}
+      AI_MODEL_NAME: ${AI_MODEL_NAME:-gemini-2.5-flash}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-15.0}
+      AI_MAX_RETRIES: ${AI_MAX_RETRIES:-1}
     ports:
       - "8000:8000"
     depends_on:
@@ -46,9 +53,51 @@ services:
     restart: always
     ports:
       - "5173:80"
+      - "3000:80"
     depends_on:
       - backend
+
+  # Local Gemma / Ollama AI inference container
+  # Runs local Gemma model inference directly within the Docker network
+  ollama:
+    image: ollama/ollama:latest
+    container_name: civicfix-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Automatically pulls Gemma model when Ollama service starts
+  ollama-model-pull:
+    image: ollama/ollama:latest
+    container_name: civicfix-ollama-pull
+    restart: "no"
+    environment:
+      - OLLAMA_HOST=ollama:11434
+      - GEMMA_MODEL=${GEMMA_MODEL:-gemma2:2b}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Waiting for Ollama server..."
+        until ollama list >/dev/null 2>&1; do
+          sleep 2
+        done
+        echo "Pulling Gemma model: $${GEMMA_MODEL}..."
+        ollama pull "$${GEMMA_MODEL}"
+        echo "Gemma model $${GEMMA_MODEL} downloaded and ready for CivicFix!"
+    depends_on:
+      ollama:
+        condition: service_healthy
 
 volumes:
   pgdata:
   uploads_data:
+  ollama_models:

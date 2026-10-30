@@ -42,6 +42,16 @@ def org_and_user(client):
     }
 
 
+def test_ai_status_endpoint(client):
+    res = client.get("/api/ai/status")
+    assert res.status_code == 200
+    data = res.json()
+    assert "provider" in data
+    assert "model_name" in data
+    assert "is_configured" in data
+    assert "timeout_seconds" in data
+
+
 def test_ai_feature_a_valid_output(client, org_and_user, db_session):
     fake = FakeAiProvider(mode="normal")
     set_ai_provider(fake)

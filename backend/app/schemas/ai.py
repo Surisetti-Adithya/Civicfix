@@ -59,3 +59,11 @@ class AiDuplicateOutput(BaseModel):
 class DuplicateCandidateResponse(BaseModel):
     candidates: List[dict]
     is_ai_suggestion: bool = True
+
+
+class AiStatusResponse(BaseModel):
+    provider: str
+    model_name: str
+    is_configured: bool
+    timeout_seconds: float
+    max_retries: int

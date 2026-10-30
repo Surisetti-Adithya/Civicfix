@@ -11,7 +11,7 @@ from backend.app.core.config import settings
 class OllamaProvider(AiProvider):
     def __init__(self, base_url: Optional[str] = None, model_name: Optional[str] = None):
         self._base_url = (base_url or settings.OLLAMA_BASE_URL).rstrip("/")
-        self._model_name = model_name or "gemma2"
+        self._model_name = model_name or settings.AI_MODEL_NAME or "gemma2:2b"
 
     @property
     def model_name(self) -> str:

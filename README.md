@@ -83,16 +83,29 @@ The frontend dev server proxies API requests to `localhost:8000`.
 
 ### Docker Deployment
 
+CivicFix provides a complete multi-container Docker Compose environment including PostgreSQL, the FastAPI backend, Ollama for local Gemma execution, and the React frontend.
+
 ```bash
 cp .env.example .env
-# Edit .env with production values
-docker-compose up --build
+
+# Option 1: Run with Google Gemini API (Hosted)
+# Set GEMINI_API_KEY in .env, then:
+docker compose up --build
+
+# Option 2: Run with local Gemma container in Docker
+# In .env set:
+#   AI_PROVIDER=ollama
+#   AI_MODEL_NAME=gemma2:2b
+# Then run:
+docker compose up --build
 ```
 
-Services:
+Docker Services:
 - **Backend API**: http://localhost:8000
-- **Frontend**: http://localhost:3000
-- **API Docs (OpenAPI)**: http://localhost:8000/api/docs
+- **Frontend (Nginx)**: http://localhost:5173 (and http://localhost:3000)
+- **Database**: PostgreSQL 16 on `db:5432` (with automated migrations & auto-seeding)
+- **Ollama AI (Local Gemma)**: http://localhost:11434 (automatically pulls `gemma2:2b` via `ollama-model-pull`)
+- **API Docs (Swagger / OpenAPI)**: http://localhost:8000/api/docs
 
 ## Demo Credentials
 
@@ -137,18 +150,31 @@ With the backend running, visit:
 | GET | /api/notifications | List user notifications |
 | GET | /api/audit-logs | List audit logs (ORG_ADMIN) |
 
-## AI Integration
+## AI Integration: Gemini & Gemma
 
-CivicFix supports two AI providers behind a common adapter:
+CivicFix supports two AI execution routes behind a unified `AiProvider` adapter:
 
-1. **Gemini API** (hosted) -- Set `AI_PROVIDER=gemini` and `GEMINI_API_KEY` in `.env`.
-2. **Ollama** (local) -- Set `AI_PROVIDER=ollama` and `OLLAMA_BASE_URL` in `.env`.
+1. **Google Gemini API (Hosted)**:
+   - Set `AI_PROVIDER=gemini` and `GEMINI_API_KEY=your_key` in `.env`.
+   - Default model: `gemini-2.5-flash` (or Gemini-hosted Gemma models).
+   - Fast hosted inference with automatic schema adherence (`responseMimeType: "application/json"`).
 
-The system works without AI -- complaint submission never depends on AI availability. All AI outputs are:
-- Validated against Pydantic schemas
-- Checked for hallucinated numbers and proper nouns
-- Clearly labeled as "AI suggestion" in the UI
-- Logged in `AiCallLog` (without storing full personal text)
+2. **Gemma Local Container (Ollama in Docker)**:
+   - Set `AI_PROVIDER=ollama` and `AI_MODEL_NAME=gemma2:2b` (or `gemma:2b`).
+   - The `ollama` and `ollama-model-pull` Docker services start automatically in `docker-compose.yml`, pull the model, and expose port 11434.
+   - Zero cloud credentials required; runs completely offline and locally.
+
+3. **Mock / Testing Provider**:
+   - Set `AI_PROVIDER=fake` for deterministic unit and CI test runs.
+
+Status Endpoint:
+- `GET /api/ai/status` returns the currently active provider, model name, and configuration state.
+
+The system is designed with strict resilience: **complaint creation never depends on AI availability**. If the model call times out or returns unparseable content, the application falls back safely without blocking user submissions. All AI outputs are:
+- Validated against strict Pydantic schemas.
+- Checked for hallucinated numbers and proper nouns against the original text.
+- Visually labeled as "AI suggestion" with human-in-the-loop review.
+- Logged in `AiCallLog` (latency, token/size, status) without storing private personal data.
 
 ### Verify AI Setup
 
