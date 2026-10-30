@@ -44,13 +44,14 @@ async def verify_main_features():
 
     # 1. Feature A: Description Improvement
     print("[1/3] Testing Feature A: Description Improvement...")
-    prompt_a = "Original complaint text:\nwater leaking from pipe on 4th floor near elevator since morning"
+    prompt_a = (
+        "Improve this civic complaint description for official staff review while keeping the exact meaning and facts:\n"
+        "water leaking from pipe on 4th floor near elevator since morning"
+    )
     system_a = (
-        "You are an AI assistant that improves community complaint descriptions for civic staff review.\n"
-        "Rules:\n"
-        "1. Keep the exact meaning of the original text.\n"
-        "2. Do NOT add any dates, places, injuries, damage, measurements, evidence, or official statements.\n"
-        "3. Output strictly valid JSON."
+        "You are an AI assistant that improves community complaint descriptions for civic review.\n"
+        "Keep the exact meaning and facts. Do not add dates, places, or injuries.\n"
+        "Output strictly valid JSON with keys: improved_description and explanation."
     )
     t0 = time.perf_counter()
     res_a, latency_a, status_a = await provider.generate_json(
