@@ -272,6 +272,7 @@ class Complaint(Base):
     history = relationship("ComplaintHistory", back_populates="complaint", cascade="all, delete-orphan")
     assignments = relationship("Assignment", back_populates="complaint", cascade="all, delete-orphan")
     evidence_files = relationship("EvidenceFile", back_populates="complaint", cascade="all, delete-orphan")
+    extensions = relationship("ComplaintExtension", back_populates="complaint", cascade="all, delete-orphan", order_by="ComplaintExtension.created_at.desc()")
     verifications = relationship("CommunityVerification", back_populates="complaint", cascade="all, delete-orphan")
     escalation_records = relationship("EscalationRecord", back_populates="complaint", cascade="all, delete-orphan")
     priority_history = relationship("PriorityHistory", back_populates="complaint", cascade="all, delete-orphan")
@@ -331,6 +332,24 @@ class EvidenceFile(Base):
 
     complaint = relationship("Complaint", back_populates="evidence_files")
     uploader = relationship("User")
+
+
+class ComplaintExtension(Base):
+    __tablename__ = "complaint_extensions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    complaint_id = Column(Integer, ForeignKey("complaints.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    text = Column(Text, nullable=False)
+    location_text = Column(String(500), nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    is_ai_merged = Column(Boolean, default=False, nullable=False)
+    similarity_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    complaint = relationship("Complaint", back_populates="extensions")
+    user = relationship("User")
 
 
 class CommunityVerification(Base):

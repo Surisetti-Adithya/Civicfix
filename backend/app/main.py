@@ -4,6 +4,8 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.app.core.config import settings
+from backend.app.core.database import Base, engine
+import backend.app.models  # ensure models are loaded
 from backend.app.core.errors import (
     CivicFixException,
     civicfix_exception_handler,
@@ -39,6 +41,9 @@ app = FastAPI(
     docs_url=f"/{settings.API_PREFIX}/docs",
     redoc_url=f"/{settings.API_PREFIX}/redoc",
 )
+
+# Ensure database tables exist
+Base.metadata.create_all(bind=engine)
 
 # Exception Handlers
 app.add_exception_handler(CivicFixException, civicfix_exception_handler)

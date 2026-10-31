@@ -82,4 +82,22 @@ class FakeAiProvider(AiProvider):
             }
             return data, int((time.perf_counter() - start) * 1000), "SUCCESS"
 
+        if schema_name == "AiSimilarityCheckOutput":
+            is_match = (
+                "duplicate" in prompt.lower()
+                or "similar" in prompt.lower()
+                or "identical" in prompt.lower()
+            )
+            data = {
+                "is_match": is_match,
+                "similarity_score": 0.88 if is_match else 0.15,
+                "confidence": "HIGH" if is_match else "LOW",
+                "reason": (
+                    "Both reports describe the same defect, photo evidence, and location under the same category."
+                    if is_match
+                    else "Reports represent distinct incidents."
+                ),
+            }
+            return data, int((time.perf_counter() - start) * 1000), "SUCCESS"
+
         return None, int((time.perf_counter() - start) * 1000), "NO_MOCK_AVAILABLE"

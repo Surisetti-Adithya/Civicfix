@@ -18,6 +18,7 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
   const [latitude, setLatitude] = useState<number | null>(user?.home_latitude ?? 12.9716);
   const [longitude, setLongitude] = useState<number | null>(user?.home_longitude ?? 77.5946);
   const [baseSeverity, setBaseSeverity] = useState('MEDIUM');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -115,6 +116,7 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
         latitude: latitude,
         longitude: longitude,
         base_severity: baseSeverity,
+        photo_name: photoFile ? photoFile.name : undefined,
       };
 
       const result = await apiRequest<Complaint>('/complaints', {
@@ -122,7 +124,37 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
         body: JSON.stringify(payload),
       });
 
-      onSuccess(result.id);
+      // If photo was attached, upload it as evidence to this complaint
+      if (photoFile && result.id) {
+        try {
+          const formData = new FormData();
+          formData.append('file', photoFile);
+          const token = localStorage.getItem('civicfix_token');
+          const orgId = localStorage.getItem('civicfix_org_id');
+          const headers: Record<string, string> = {};
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+          if (orgId) headers['X-Organization-Id'] = orgId;
+
+          await fetch(`/api/complaints/${result.id}/evidence`, {
+            method: 'POST',
+            headers,
+            body: formData,
+          });
+        } catch {
+          // non-blocking
+        }
+      }
+
+      if (result.is_merged) {
+        setAiSuccessMessage(
+          `✨ Gemma AI identified an existing report for this issue (${result.public_reference_number})! Your report was merged as an extension with updated photos and location. Trust Levels increased for both accounts! Redirecting...`
+        );
+        setTimeout(() => {
+          onSuccess(result.id);
+        }, 1500);
+      } else {
+        onSuccess(result.id);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to submit complaint.');
     } finally {
@@ -258,6 +290,22 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
           />
           <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginTop: '2px' }}>
             Pre-filled from your registered permanent location. You can modify it for this specific report if needed.
+          </span>
+        </div>
+
+        <div>
+          <label htmlFor="photo-upload" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 600 }}>
+            Attach Photo / Evidence (Optional)
+          </label>
+          <input
+            id="photo-upload"
+            type="file"
+            accept=".jpg,.jpeg,.png,.pdf,.txt"
+            onChange={(e) => setPhotoFile(e.target.files ? e.target.files[0] : null)}
+            style={{ fontSize: '0.85rem' }}
+          />
+          <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginTop: '2px' }}>
+            Gemma AI analyzes photos, descriptions, and locations to detect existing posts and merge extensions automatically.
           </span>
         </div>
 

@@ -64,6 +64,7 @@ class ComplaintCreate(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     base_severity: Optional[str] = "MEDIUM"
+    photo_name: Optional[str] = None
 
 
 class ComplaintStatusUpdate(BaseModel):
@@ -156,6 +157,39 @@ class ComplaintBrief(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ComplaintExtensionResponse(BaseModel):
+    id: int
+    complaint_id: int
+    user_id: int
+    text: str
+    location_text: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    is_ai_merged: bool = False
+    similarity_reason: Optional[str] = None
+    created_at: datetime.datetime
+    user: Optional[UserResponse] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ComplaintTimelineEntry(BaseModel):
+    id: str
+    entry_type: str  # "INITIAL_REPORT", "AI_MERGED_EXTENSION", "COMMUNITY_CONTRIBUTION", "EVIDENCE_PHOTO", "STATUS_UPDATE"
+    timestamp: datetime.datetime
+    author_name: str
+    author_id: Optional[int] = None
+    author_trust_level: Optional[int] = None
+    author_badge_title: Optional[str] = None
+    author_badge_tier: Optional[str] = None
+    text: Optional[str] = None
+    location_text: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    photos: List[EvidenceFileResponse] = []
+    notes: Optional[str] = None
+
+
 class ComplaintDetail(ComplaintBrief):
     description_original: str
     description_improved: Optional[str] = None
@@ -164,5 +198,10 @@ class ComplaintDetail(ComplaintBrief):
     history: List[ComplaintHistoryResponse] = []
     assignments: List[AssignmentResponse] = []
     evidence_files: List[EvidenceFileResponse] = []
+    extensions: List[ComplaintExtensionResponse] = []
+    timeline_entries: List[ComplaintTimelineEntry] = []
+    is_merged: Optional[bool] = False
+    merged_into_id: Optional[int] = None
+    merge_reason: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

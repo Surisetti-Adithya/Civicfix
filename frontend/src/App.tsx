@@ -70,6 +70,7 @@ function MainContent() {
         {currentView === 'staff-queue' && (
           <ComplaintList
             title="Staff Operational Queue"
+            portal="staff"
             onSelectComplaint={navigateToComplaint}
           />
         )}
@@ -137,6 +138,7 @@ function MainContent() {
                 <ComplaintList
                   title={role === 'CITIZEN' ? 'Nearby Reports' : 'All Open Reports'}
                   scope={role === 'CITIZEN' ? 'nearby' : undefined}
+                  portal={role === 'CITIZEN' ? 'citizen' : 'staff'}
                   onSelectComplaint={navigateToComplaint}
                 />
               </div>

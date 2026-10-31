@@ -1,21 +1,37 @@
 import { useState, useEffect } from 'react';
 import { apiRequest } from '../api/client';
 import { Complaint, PaginatedResponse } from '../types';
-import { MapPin } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { MapPin, Filter } from 'lucide-react';
 
 interface ComplaintListProps {
   onSelectComplaint: (id: number) => void;
   title?: string;
   initialStatus?: string;
   scope?: string;
+  portal?: 'staff' | 'citizen';
+  defaultSort?: 'severity' | 'latest';
 }
 
-export default function ComplaintList({ onSelectComplaint, title = "Issues & Reports", initialStatus = "", scope }: ComplaintListProps) {
+export default function ComplaintList({
+  onSelectComplaint,
+  title = "Issues & Reports",
+  initialStatus = "",
+  scope,
+  portal,
+  defaultSort,
+}: ComplaintListProps) {
+  const { role } = useAuth();
+  const isStaffPortal = portal === 'staff' || (!portal && (role === 'STAFF' || role === 'ORG_ADMIN' || role === 'PLATFORM_ADMIN' || title.toLowerCase().includes('staff')));
+  const initialSort = defaultSort || (isStaffPortal ? 'severity' : 'latest');
+
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [priorityFilter, setPriorityFilter] = useState('');
+  const [sortBy, setSortBy] = useState<'severity' | 'latest'>(initialSort);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -26,6 +42,7 @@ export default function ComplaintList({ onSelectComplaint, title = "Issues & Rep
       const params = new URLSearchParams();
       params.set('page', page.toString());
       params.set('page_size', '15');
+      params.set('sort_by', sortBy);
       if (statusFilter) params.set('status', statusFilter);
       if (priorityFilter) params.set('priority', priorityFilter);
       if (scope) params.set('scope', scope);
@@ -42,7 +59,7 @@ export default function ComplaintList({ onSelectComplaint, title = "Issues & Rep
 
   useEffect(() => {
     fetchComplaints();
-  }, [page, statusFilter, priorityFilter, scope]);
+  }, [page, statusFilter, priorityFilter, scope, sortBy]);
 
   const getStatusColor = (st: string) => {
     switch (st) {
@@ -77,42 +94,165 @@ export default function ComplaintList({ onSelectComplaint, title = "Issues & Rep
           <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Total recorded: {total}</p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <div>
-            <label htmlFor="filter-status" style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Status</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
+          {/* Requirement 1: Sorting options on the side */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label htmlFor="sort-select" style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>
+              Sort:
+            </label>
             <select
-              id="filter-status"
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-              style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.875rem' }}
+              id="sort-select"
+              value={sortBy}
+              onChange={(e) => {
+                setSortBy(e.target.value as 'severity' | 'latest');
+                setPage(1);
+              }}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                fontSize: '0.85rem',
+                background: '#f8fafc',
+                color: '#0f172a',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
             >
-              <option value="">All Statuses</option>
-              <option value="SUBMITTED">Submitted</option>
-              <option value="UNDER_REVIEW">Under Review</option>
-              <option value="ASSIGNED">Assigned</option>
-              <option value="IN_PROGRESS">In Progress</option>
-              <option value="AWAITING_INFORMATION">Awaiting Info</option>
-              <option value="RESOLVED">Resolved</option>
-              <option value="REOPENED">Reopened</option>
-              <option value="REJECTED">Rejected</option>
-              <option value="CLOSED">Closed</option>
+              <option value="severity">Severity (Critical to Low)</option>
+              <option value="latest">Latest Date Posted</option>
             </select>
           </div>
 
-          <div>
-            <label htmlFor="filter-priority" style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Priority</label>
-            <select
-              id="filter-priority"
-              value={priorityFilter}
-              onChange={(e) => { setPriorityFilter(e.target.value); setPage(1); }}
-              style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.875rem' }}
+          {/* Requirement 2: 1 single filter button containing status & priority */}
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              id="filter-toggle-button"
+              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '6px',
+                border: (statusFilter || priorityFilter) ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                background: (statusFilter || priorityFilter) ? '#eff6ff' : '#ffffff',
+                color: (statusFilter || priorityFilter) ? '#1d4ed8' : '#334155',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+              }}
             >
-              <option value="">All Priorities</option>
-              <option value="CRITICAL">Critical</option>
-              <option value="HIGH">High</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="LOW">Low</option>
-            </select>
+              <Filter size={15} />
+              <span>Filters</span>
+              {(statusFilter || priorityFilter) && (
+                <span style={{
+                  background: '#2563eb',
+                  color: '#ffffff',
+                  borderRadius: '999px',
+                  padding: '1px 6px',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                }}>
+                  {[statusFilter ? 1 : 0, priorityFilter ? 1 : 0].reduce((a, b) => a + b, 0)}
+                </span>
+              )}
+            </button>
+
+            {showFilterDropdown && (
+              <div style={{
+                position: 'absolute',
+                right: 0,
+                top: 'calc(100% + 6px)',
+                zIndex: 40,
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                padding: '1rem',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15)',
+                minWidth: '250px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.85rem',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>Filter Issues</span>
+                  {(statusFilter || priorityFilter) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStatusFilter('');
+                        setPriorityFilter('');
+                        setPage(1);
+                      }}
+                      style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="filter-status-select" style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                    Status
+                  </label>
+                  <select
+                    id="filter-status-select"
+                    value={statusFilter}
+                    onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                  >
+                    <option value="">All Statuses</option>
+                    <option value="SUBMITTED">Submitted</option>
+                    <option value="UNDER_REVIEW">Under Review</option>
+                    <option value="ASSIGNED">Assigned</option>
+                    <option value="IN_PROGRESS">In Progress</option>
+                    <option value="AWAITING_INFORMATION">Awaiting Info</option>
+                    <option value="RESOLVED">Resolved</option>
+                    <option value="REOPENED">Reopened</option>
+                    <option value="REJECTED">Rejected</option>
+                    <option value="CLOSED">Closed</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="filter-priority-select" style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                    Priority
+                  </label>
+                  <select
+                    id="filter-priority-select"
+                    value={priorityFilter}
+                    onChange={(e) => { setPriorityFilter(e.target.value); setPage(1); }}
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                  >
+                    <option value="">All Priorities</option>
+                    <option value="CRITICAL">Critical</option>
+                    <option value="HIGH">High</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="LOW">Low</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowFilterDropdown(false)}
+                    style={{
+                      padding: '5px 12px',
+                      background: '#2563eb',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Apply Filters
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

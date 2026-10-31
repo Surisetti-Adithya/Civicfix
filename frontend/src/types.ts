@@ -115,6 +115,37 @@ export interface EvidenceFile {
   uploader?: User | null;
 }
 
+export interface ComplaintExtension {
+  id: number;
+  complaint_id: number;
+  user_id: number;
+  text: string;
+  location_text?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  is_ai_merged: boolean;
+  similarity_reason?: string | null;
+  created_at: string;
+  user?: User | null;
+}
+
+export interface ComplaintTimelineEntry {
+  id: string;
+  entry_type: string;
+  timestamp: string;
+  author_name: string;
+  author_id?: number | null;
+  author_trust_level?: number | null;
+  author_badge_title?: string | null;
+  author_badge_tier?: string | null;
+  text?: string | null;
+  location_text?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  photos: EvidenceFile[];
+  notes?: string | null;
+}
+
 export interface Complaint {
   id: number;
   public_reference_number: string;
@@ -144,4 +175,9 @@ export interface Complaint {
   history?: ComplaintHistory[];
   assignments?: Assignment[];
   evidence_files?: EvidenceFile[];
+  extensions?: ComplaintExtension[];
+  timeline_entries?: ComplaintTimelineEntry[];
+  is_merged?: boolean;
+  merged_into_id?: number | null;
+  merge_reason?: string | null;
 }

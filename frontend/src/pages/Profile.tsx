@@ -209,6 +209,7 @@ export default function Profile({ onSelectComplaint }: ProfileProps) {
         <ComplaintList
           title="My Submissions"
           scope="my"
+          portal="citizen"
           onSelectComplaint={onSelectComplaint}
         />
       </div>

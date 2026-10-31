@@ -1,4 +1,5 @@
 import datetime
+import math
 import re
 from typing import List, Optional, Tuple, Dict, Any
 from sqlalchemy.orm import Session as DBSession
@@ -16,6 +17,7 @@ from backend.app.schemas.ai import (
     SuggestCategoryOutput,
     SuggestCategoryResponse,
     AiDuplicateOutput,
+    AiSimilarityCheckOutput,
     DuplicateCandidateResponse,
 )
 from backend.app.services.ai.factory import get_ai_provider
@@ -361,3 +363,151 @@ async def find_duplicate_candidates_service(
         })
 
     return DuplicateCandidateResponse(candidates=final_candidates, is_ai_suggestion=True)
+
+
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371.0  # Earth radius in kilometers
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+
+async def check_complaint_similarity_service(
+    db: DBSession,
+    organization_id: int,
+    user_id: int,
+    category_id: int,
+    description: str,
+    location_text: str,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+    photo_name: Optional[str] = None,
+) -> Optional[Tuple[Complaint, str, float]]:
+    """
+    Checks if a new post under the same category is similar to an existing post
+    by evaluating text, photos/media, and geographic location using Gemma AI.
+    Returns (matched_complaint, reason, similarity_score) if a similarity match is found.
+    """
+    check_ai_rate_limit(user_id)
+    provider = get_ai_provider()
+
+    # Query active posts under the same category in the organization
+    candidates = (
+        db.query(Complaint)
+        .filter(
+            Complaint.organization_id == organization_id,
+            Complaint.category_id == category_id,
+            Complaint.status.notin_(["REJECTED", "CLOSED"]),
+        )
+        .order_by(Complaint.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    if not candidates:
+        return None
+
+    category = db.query(Category).filter(Category.id == category_id).first()
+    category_name = category.name if category else "General"
+
+    scored_candidates = []
+    for c in candidates:
+        # 1. Text similarity
+        text_sim = compute_text_similarity(description, c.description_original)
+        if c.description_improved:
+            text_sim = max(text_sim, compute_text_similarity(description, c.description_improved))
+
+        # 2. Location similarity
+        loc_score = 0.0
+        dist_km = None
+        if latitude is not None and longitude is not None and c.latitude is not None and c.longitude is not None:
+            dist_km = haversine_distance(latitude, longitude, c.latitude, c.longitude)
+            if dist_km <= 0.35:  # within 350 meters
+                loc_score = max(0.5, 1.0 - (dist_km / 0.35))
+        
+        # Location text overlap
+        loc_text_sim = compute_text_similarity(location_text, c.location_text)
+        loc_score = max(loc_score, loc_text_sim)
+
+        # 3. Photo/media factor
+        photo_factor = 0.1 if (photo_name or (c.evidence_files and len(c.evidence_files) > 0)) else 0.0
+
+        # Preliminary combined score
+        combined_prelim = (text_sim * 0.5) + (loc_score * 0.4) + photo_factor
+        scored_candidates.append((c, combined_prelim, text_sim, loc_score, dist_km))
+
+    scored_candidates.sort(key=lambda x: x[1], reverse=True)
+    top_candidates = [cand for cand in scored_candidates if cand[1] >= 0.15]
+
+    if not top_candidates:
+        return None
+
+    # Evaluate best candidate with Gemma AI
+    best_candidate, prelim_score, text_sim, loc_score, dist_km = top_candidates[0]
+
+    system_prompt = (
+        "You are Gemma AI assisting in municipal complaint organization and deduplication.\n"
+        "Analyze whether the NEW citizen post describes the SAME problem/incident at the SAME location "
+        "as an EXISTING post under the same category.\n"
+        "Consider text details, photos/evidence, and location.\n"
+        "If they refer to the same physical issue, return is_match=true with a clear factual reason."
+    )
+
+    photo_context = f"New post photo attached: {photo_name}" if photo_name else "No photo attached on new post"
+    existing_photo_context = (
+        f"{len(best_candidate.evidence_files)} photos on record"
+        if best_candidate.evidence_files
+        else "No photos on existing record"
+    )
+
+    dist_str = f"Approx {round(dist_km * 1000)} meters apart" if dist_km is not None else "Coordinates not both available"
+    prompt = (
+        f"Category: {category_name}\n\n"
+        f"NEW POST:\n"
+        f"- Description: {description.strip()}\n"
+        f"- Location: {location_text.strip()} ({latitude}, {longitude})\n"
+        f"- Media Context: {photo_context}\n\n"
+        f"EXISTING POST (#{best_candidate.public_reference_number}):\n"
+        f"- Description: {best_candidate.description_original.strip()}\n"
+        f"- Location: {best_candidate.location_text.strip()} ({best_candidate.latitude}, {best_candidate.longitude})\n"
+        f"- Distance / Proximity: {dist_str}\n"
+        f"- Media Context: {existing_photo_context}"
+    )
+
+    res_dict = None
+    latency_ms = 0
+    status = "ERROR"
+
+    for _ in range(settings.AI_MAX_RETRIES + 1):
+        res_dict, latency_ms, status = await provider.generate_json(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            schema_class=AiSimilarityCheckOutput,
+            timeout_seconds=settings.AI_TIMEOUT_SECONDS,
+        )
+        if status == "SUCCESS" and res_dict:
+            break
+
+    log_ai_call(db, organization_id, "complaint-similarity-check", provider.model_name, status, latency_ms, len(prompt))
+
+    if res_dict and res_dict.get("is_match") is True:
+        reason = res_dict.get(
+            "reason",
+            f"Gemma AI identified overlapping issue description, location ({best_candidate.location_text}), and photo context."
+        )
+        score = float(res_dict.get("similarity_score", prelim_score))
+        return best_candidate, reason, score
+
+    # Fallback heuristic: If high text overlap AND very close location
+    if (text_sim >= 0.40 and loc_score >= 0.50) or (text_sim >= 0.55 and loc_score >= 0.25):
+        reason = (
+            f"High text similarity ({round(text_sim * 100)}%) and matching location "
+            f"({best_candidate.location_text}) identified under {category_name}."
+        )
+        return best_candidate, reason, prelim_score
+
+    return None

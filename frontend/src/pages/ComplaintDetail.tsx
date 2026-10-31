@@ -4,7 +4,7 @@ import { Complaint, Team, VerificationSummary } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { TrustBadge } from '../components/TrustBadge';
 import { LocationPicker } from '../components/LocationPicker';
-import { CheckCircle2, ShieldCheck, PlusCircle, MapPin } from 'lucide-react';
+import { CheckCircle2, ShieldCheck, PlusCircle, MapPin, Clock, Image as ImageIcon, Sparkles } from 'lucide-react';
 
 interface ComplaintDetailProps {
   complaintId: number;
@@ -49,6 +49,35 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
   // Standalone Evidence upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+
+  // Loaded image thumbnail URLs for photos
+  const [imageUrls, setImageUrls] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    if (complaint?.evidence_files) {
+      const token = localStorage.getItem('civicfix_token');
+      const orgId = localStorage.getItem('civicfix_org_id');
+      complaint.evidence_files.forEach((file) => {
+        if (file.content_type?.startsWith('image/')) {
+          fetch(`/api/complaints/${complaint.id}/evidence/${file.id}/download`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'X-Organization-Id': orgId || '',
+            },
+          })
+            .then((r) => {
+              if (r.ok) return r.blob();
+              throw new Error('Image download failed');
+            })
+            .then((blob) => {
+              const url = URL.createObjectURL(blob);
+              setImageUrls((prev) => ({ ...prev, [file.id]: url }));
+            })
+            .catch(() => {});
+        }
+      });
+    }
+  }, [complaint]);
 
   const fetchComplaint = async () => {
     setLoading(true);
@@ -301,6 +330,88 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
   const isStaffOrAdmin = role === 'STAFF' || role === 'ORG_ADMIN' || role === 'PLATFORM_ADMIN';
   const hasUserVerified = verification?.user_answer === 'VERIFIED_REAL' || verification?.user_answer === 'STILL_EXISTS';
   const verifiedCount = verification?.verified_count ?? 0;
+
+  // Requirement 3: Unified chronological progression of all pictures, locations, and text (Newer at top)
+  const timelineItems = (() => {
+    if (complaint.timeline_entries && complaint.timeline_entries.length > 0) {
+      return complaint.timeline_entries;
+    }
+    const list: any[] = [];
+    if (complaint.created_at) {
+      list.push({
+        id: `initial-${complaint.id}`,
+        entry_type: 'INITIAL_REPORT',
+        timestamp: complaint.created_at,
+        author_name: complaint.reporter?.full_name || 'Citizen Reporter',
+        author_id: complaint.reporter_id,
+        author_trust_level: complaint.reporter?.trust_level,
+        author_badge_title: complaint.reporter?.badge_title,
+        author_badge_tier: complaint.reporter?.badge_tier,
+        text: complaint.description_original,
+        location_text: complaint.location_text,
+        latitude: complaint.latitude,
+        longitude: complaint.longitude,
+        photos: [],
+        notes: complaint.description_improved,
+      });
+    }
+    if (complaint.extensions) {
+      complaint.extensions.forEach((ext) => {
+        list.push({
+          id: `ext-${ext.id}`,
+          entry_type: ext.is_ai_merged ? 'AI_MERGED_EXTENSION' : 'COMMUNITY_CONTRIBUTION',
+          timestamp: ext.created_at,
+          author_name: ext.user?.full_name || 'Community Contributor',
+          author_id: ext.user_id,
+          author_trust_level: ext.user?.trust_level,
+          author_badge_title: ext.user?.badge_title,
+          author_badge_tier: ext.user?.badge_tier,
+          text: ext.text,
+          location_text: ext.location_text,
+          latitude: ext.latitude,
+          longitude: ext.longitude,
+          photos: [],
+          notes: ext.similarity_reason,
+        });
+      });
+    }
+    if (complaint.evidence_files) {
+      complaint.evidence_files.forEach((ef) => {
+        list.push({
+          id: `ev-${ef.id}`,
+          entry_type: 'EVIDENCE_PHOTO',
+          timestamp: ef.uploaded_at,
+          author_name: ef.uploader?.full_name || 'Contributor',
+          author_id: ef.uploader_id,
+          author_trust_level: ef.uploader?.trust_level,
+          author_badge_title: ef.uploader?.badge_title,
+          author_badge_tier: ef.uploader?.badge_tier,
+          text: `Uploaded photo: ${ef.original_name}`,
+          photos: [ef],
+        });
+      });
+    }
+    if (complaint.history) {
+      complaint.history.forEach((h) => {
+        if (h.field === 'status') {
+          list.push({
+            id: `hist-${h.id}`,
+            entry_type: 'STATUS_UPDATE',
+            timestamp: h.created_at,
+            author_name: h.actor?.full_name || 'Staff / System',
+            author_id: h.actor_id,
+            author_trust_level: h.actor?.trust_level,
+            author_badge_title: h.actor?.badge_title,
+            author_badge_tier: h.actor?.badge_tier,
+            text: `Status changed: ${h.old_value || 'None'} -> ${h.new_value}`,
+            notes: h.notes,
+          });
+        }
+      });
+    }
+    list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return list;
+  })();
 
   return (
     <div style={{ maxWidth: '950px', margin: '1rem auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -658,6 +769,179 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
             </form>
           </div>
         )}
+      </div>
+
+      {/* Requirement 3: All pictures, locations, and text uploaded across time from different people (Newer data at top) */}
+      <div style={{ background: '#ffffff', padding: '1.75rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Clock size={20} color="#2563eb" />
+              Problem Updates & Chronological Evolution
+            </h3>
+            <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
+              All pictures, locations, and text uploaded about this request from different people. <strong>Newer updates are displayed at the top</strong> to give staff clear visibility into how the issue has changed over time.
+            </p>
+          </div>
+          <span style={{ fontSize: '0.78rem', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '4px 12px', borderRadius: '999px', fontWeight: 700 }}>
+            {timelineItems.length} Chronological Record{timelineItems.length === 1 ? '' : 's'} (Latest First)
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {timelineItems.map((item, idx) => {
+            const isInitial = item.entry_type === 'INITIAL_REPORT';
+            const isAiMerged = item.entry_type === 'AI_MERGED_EXTENSION';
+            const isPhotoOnly = item.entry_type === 'EVIDENCE_PHOTO';
+            const isStatus = item.entry_type === 'STATUS_UPDATE';
+            const itemPhotos = item.photos && item.photos.length > 0 ? item.photos : [];
+
+            return (
+              <div
+                key={item.id || idx}
+                style={{
+                  border: isAiMerged ? '2px solid #93c5fd' : '1px solid #e2e8f0',
+                  background: isAiMerged ? '#f8faff' : isInitial ? '#fafafa' : '#ffffff',
+                  borderRadius: '8px',
+                  padding: '1.25rem',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+                  position: 'relative',
+                }}
+              >
+                {/* Header row: Author + Trust Badge + Type Badge + Timestamp */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0f172a' }}>
+                      {item.author_name}
+                    </span>
+                    {item.author_badge_tier && (
+                      <TrustBadge
+                        tier={item.author_badge_tier}
+                        title={item.author_badge_title}
+                        trustLevel={item.author_trust_level}
+                        showPoints={true}
+                        size="small"
+                      />
+                    )}
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        background: isAiMerged ? '#dbeafe' : isInitial ? '#f1f5f9' : isStatus ? '#fef3c7' : '#dcfce7',
+                        color: isAiMerged ? '#1e40af' : isInitial ? '#475569' : isStatus ? '#92400e' : '#166534',
+                        border: isAiMerged ? '1px solid #bfdbfe' : isInitial ? '1px solid #cbd5e1' : isStatus ? '1px solid #fde68a' : '1px solid #bbf7d0',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      {isAiMerged && <Sparkles size={12} />}
+                      {isAiMerged
+                        ? 'Gemma AI Merged Post / Extension'
+                        : isInitial
+                        ? 'Initial Report'
+                        : isStatus
+                        ? 'Status Update'
+                        : isPhotoOnly
+                        ? 'Evidence Upload'
+                        : 'Community Contribution'}
+                    </span>
+                  </div>
+
+                  <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>
+                    {new Date(item.timestamp).toLocaleString(undefined, {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+
+                {/* Text uploaded */}
+                {item.text && (
+                  <div style={{ fontSize: '0.9rem', color: '#1e293b', lineHeight: 1.55, marginBottom: '0.75rem', whiteSpace: 'pre-wrap' }}>
+                    {item.text}
+                  </div>
+                )}
+
+                {/* Location uploaded */}
+                {item.location_text && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.825rem', color: '#334155', background: '#f8fafc', padding: '6px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                    <MapPin size={14} color="#dc2626" />
+                    <strong>Reported Location:</strong>
+                    <span>{item.location_text}</span>
+                    {item.latitude && item.longitude && (
+                      <span style={{ fontSize: '0.72rem', color: '#2563eb', background: '#eff6ff', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                        Mapped ({item.latitude.toFixed(4)}, {item.longitude.toFixed(4)})
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Pictures / Photos uploaded */}
+                {itemPhotos.length > 0 && (
+                  <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <ImageIcon size={14} color="#475569" /> Photos Uploaded at this Step:
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                      {itemPhotos.map((p: any) => (
+                        <div
+                          key={p.id}
+                          style={{
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '6px',
+                            overflow: 'hidden',
+                            background: '#f8fafc',
+                            maxWidth: '220px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                          }}
+                        >
+                          {imageUrls[p.id] ? (
+                            <img
+                              src={imageUrls[p.id]}
+                              alt={p.original_name}
+                              style={{ width: '100%', height: '140px', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <div style={{ height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e2e8f0', color: '#64748b', fontSize: '0.75rem', padding: '10px', textAlign: 'center' }}>
+                              Photo Document ({p.original_name})
+                            </div>
+                          )}
+                          <div style={{ padding: '6px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '110px' }} title={p.original_name}>
+                              {p.original_name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => downloadFile(p.id)}
+                              style={{ padding: '3px 8px', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '4px', fontSize: '0.72rem', cursor: 'pointer', fontWeight: 600 }}
+                            >
+                              Download
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes or AI similarity reason */}
+                {item.notes && (
+                  <div style={{ fontSize: '0.78rem', color: isAiMerged ? '#1e40af' : '#475569', background: isAiMerged ? '#eff6ff' : '#f8fafc', borderLeft: `3px solid ${isAiMerged ? '#3b82f6' : '#cbd5e1'}`, padding: '6px 10px', borderRadius: '0 4px 4px 0', marginTop: '0.5rem' }}>
+                    {isAiMerged ? <strong>Gemma AI Deduplication Note: </strong> : null}
+                    {item.notes}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Staff Actions Panel */}

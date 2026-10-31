@@ -56,6 +56,13 @@ class AiDuplicateOutput(BaseModel):
     matches: List[AiDuplicateComparison] = []
 
 
+class AiSimilarityCheckOutput(BaseModel):
+    is_match: bool
+    similarity_score: float = 0.0
+    confidence: str = "MEDIUM"  # "HIGH", "MEDIUM", "LOW"
+    reason: str = ""
+
+
 class DuplicateCandidateResponse(BaseModel):
     candidates: List[dict]
     is_ai_suggestion: bool = True
