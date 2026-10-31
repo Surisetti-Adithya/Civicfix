@@ -156,8 +156,8 @@ CivicFix supports two AI execution routes behind a unified `AiProvider` adapter:
 
 1. **Google Gemini API (Hosted)**:
    - Set `AI_PROVIDER=gemini` and `GEMINI_API_KEY=your_key` in `.env`.
-   - Default model: `gemini-2.5-flash` (or Gemini-hosted Gemma models).
-   - Fast hosted inference with automatic schema adherence (`responseMimeType: "application/json"`).
+   - Default model: `gemma-4-26b-a4b-it` (or `gemini-3.8-flash`).
+   - Hosted Gemma inference with structured JSON extraction and hallucination guardrails.
 
 2. **Gemma Local Container (Ollama in Docker)**:
    - Set `AI_PROVIDER=ollama` and `AI_MODEL_NAME=gemma2:2b` (or `gemma:2b`).
