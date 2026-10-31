@@ -99,6 +99,7 @@ def list_complaints(
     priority: Optional[str] = Query(None),
     category_id: Optional[int] = Query(None),
     is_overdue: Optional[bool] = Query(None),
+    scope: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: DBSession = Depends(get_db),
@@ -106,9 +107,10 @@ def list_complaints(
 ):
     query = db.query(Complaint).filter(Complaint.organization_id == ctx.organization_id)
 
-    # CITIZEN role sees only their own complaints
+    # CITIZEN role: default to own submissions unless scope is 'nearby' or 'all'
     if ctx.role == RoleEnum.CITIZEN.value:
-        query = query.filter(Complaint.reporter_id == ctx.user.id)
+        if scope not in ["nearby", "community", "all"]:
+            query = query.filter(Complaint.reporter_id == ctx.user.id)
 
     if status:
         query = query.filter(Complaint.status == status)

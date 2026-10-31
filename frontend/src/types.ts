@@ -9,6 +9,7 @@ export interface User {
   email: string;
   full_name: string;
   phone_number?: string | null;
+  permanent_location?: string | null;
   is_active: boolean;
   created_at: string;
 }

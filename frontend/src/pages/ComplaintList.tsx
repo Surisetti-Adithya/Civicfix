@@ -6,9 +6,10 @@ interface ComplaintListProps {
   onSelectComplaint: (id: number) => void;
   title?: string;
   initialStatus?: string;
+  scope?: string;
 }
 
-export default function ComplaintList({ onSelectComplaint, title = "Issues & Reports", initialStatus = "" }: ComplaintListProps) {
+export default function ComplaintList({ onSelectComplaint, title = "Issues & Reports", initialStatus = "", scope }: ComplaintListProps) {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -26,6 +27,7 @@ export default function ComplaintList({ onSelectComplaint, title = "Issues & Rep
       params.set('page_size', '15');
       if (statusFilter) params.set('status', statusFilter);
       if (priorityFilter) params.set('priority', priorityFilter);
+      if (scope) params.set('scope', scope);
 
       const res = await apiRequest<PaginatedResponse<Complaint>>(`/complaints?${params.toString()}`);
       setComplaints(res.items);
@@ -39,7 +41,7 @@ export default function ComplaintList({ onSelectComplaint, title = "Issues & Rep
 
   useEffect(() => {
     fetchComplaints();
-  }, [page, statusFilter, priorityFilter]);
+  }, [page, statusFilter, priorityFilter, scope]);
 
   const getStatusColor = (st: string) => {
     switch (st) {

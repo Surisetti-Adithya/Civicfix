@@ -9,7 +9,8 @@ interface AuthContextType {
   memberships: Membership[];
   token: string | null;
   login: (email: string, pass: string, orgId?: number) => Promise<void>;
-  register: (email: string, pass: string, fullName: string, orgId?: number, role?: string) => Promise<void>;
+  register: (email: string, pass: string, fullName: string, orgId?: number, role?: string, permanentLocation?: string) => Promise<void>;
+  updateProfile: (profile: { full_name?: string; phone_number?: string; permanent_location?: string }) => Promise<void>;
   logout: () => Promise<void>;
   switchOrg: (orgId: number) => Promise<void>;
   refreshAuth: () => Promise<void>;
@@ -75,13 +76,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     applySession(data);
   };
 
-  const register = async (email: string, pass: string, fullName: string, orgId?: number, role?: string) => {
+  const register = async (email: string, pass: string, fullName: string, orgId?: number, role?: string, permanentLocation?: string) => {
     const payload: any = { email, password: pass, full_name: fullName };
     if (orgId) payload.organization_id = orgId;
     if (role) payload.role = role;
+    if (permanentLocation) payload.permanent_location = permanentLocation;
     const data = await apiRequest<SessionResponse>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+    applySession(data);
+  };
+
+  const updateProfile = async (profile: { full_name?: string; phone_number?: string; permanent_location?: string }) => {
+    const data = await apiRequest<SessionResponse>('/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(profile),
     });
     applySession(data);
   };
@@ -118,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token,
         login,
         register,
+        updateProfile,
         logout,
         switchOrg,
         refreshAuth,

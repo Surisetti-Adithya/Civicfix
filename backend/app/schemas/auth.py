@@ -7,12 +7,19 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: str
     phone_number: Optional[str] = None
+    permanent_location: Optional[str] = None
 
 
 class UserRegister(UserBase):
     password: str = Field(..., min_length=8)
     organization_id: Optional[int] = None
     role: Optional[str] = "CITIZEN"
+
+
+class UpdateProfileRequest(BaseModel):
+    full_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    permanent_location: Optional[str] = None
 
 
 class UserLogin(BaseModel):

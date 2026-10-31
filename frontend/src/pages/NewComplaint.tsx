@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiRequest } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { Category, Complaint } from '../types';
 
 interface NewComplaintProps {
@@ -8,6 +9,7 @@ interface NewComplaintProps {
 }
 
 export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps) {
+  const { user } = useAuth();
   const [description, setDescription] = useState('');
   const [descriptionImproved, setDescriptionImproved] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
@@ -17,10 +19,15 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // AI Assistance states (wired up for Phase 4)
+  // AI Assistance states
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiCategorySuggestion, setAiCategorySuggestion] = useState<{ id: number; name: string; reason: string; confidence: string } | null>(null);
-  const [aiImprovementSuggestion, setAiImprovementSuggestion] = useState<string | null>(null);
+  const [aiSuccessMessage, setAiSuccessMessage] = useState('');
+
+  // 1. Automatically fill address for citizen portal demo identity / user profile
+  useEffect(() => {
+    const defaultAddress = user?.permanent_location || '4th Cross, 5th Main, Indiranagar, Metro City';
+    setLocationText(defaultAddress);
+  }, [user]);
 
   useEffect(() => {
     apiRequest<Category[]>('/categories')
@@ -33,48 +40,47 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
       .catch(() => {});
   }, []);
 
-  const handleImproveWithAI = async () => {
-    if (!description.trim()) return;
-    setAiLoading(true);
-    setError('');
-    try {
-      const res = await apiRequest<{ improved_description: string | null; message?: string }>('/ai/improve-description', {
-        method: 'POST',
-        body: JSON.stringify({ description }),
-      });
-      if (res.improved_description) {
-        setAiImprovementSuggestion(res.improved_description);
-      } else {
-        setError(res.message || 'AI suggestion unavailable.');
-      }
-    } catch (err: any) {
-      setError(err.message || 'AI service unavailable. You can continue submitting your report manually.');
-    } finally {
-      setAiLoading(false);
+  // 4. Single "Done" button that triggers both clarity improvement and category recommendation
+  const handleDoneWithAI = async () => {
+    if (!description.trim()) {
+      setError('Please type a description before clicking Done.');
+      return;
     }
-  };
-
-  const handleSuggestCategoryWithAI = async () => {
-    if (!description.trim()) return;
     setAiLoading(true);
     setError('');
+    setAiSuccessMessage('');
+
     try {
-      const res = await apiRequest<{ category_id: number | null; category_name?: string; reason: string; confidence: string }>('/ai/suggest-category', {
-        method: 'POST',
-        body: JSON.stringify({ description }),
-      });
-      if (res.category_id) {
-        setAiCategorySuggestion({
-          id: res.category_id,
-          name: res.category_name || `Category #${res.category_id}`,
-          reason: res.reason,
-          confidence: res.confidence,
-        });
-      } else {
-        setError('No category recommendation available from AI.');
+      const [improveRes, categoryRes] = await Promise.allSettled([
+        apiRequest<{ improved_description: string | null; message?: string }>('/ai/improve-description', {
+          method: 'POST',
+          body: JSON.stringify({ description }),
+        }),
+        apiRequest<{ category_id: number | null; category_name?: string; reason: string; confidence: string }>('/ai/suggest-category', {
+          method: 'POST',
+          body: JSON.stringify({ description }),
+        }),
+      ]);
+
+      let improvedApplied = false;
+      let categoryApplied = false;
+
+      if (improveRes.status === 'fulfilled' && improveRes.value.improved_description) {
+        setDescription(improveRes.value.improved_description);
+        setDescriptionImproved(improveRes.value.improved_description);
+        improvedApplied = true;
       }
-    } catch (err: any) {
-      setError(err.message || 'AI category suggestion unavailable.');
+
+      if (categoryRes.status === 'fulfilled' && categoryRes.value.category_id) {
+        setCategoryId(categoryRes.value.category_id);
+        categoryApplied = true;
+      }
+
+      if (improvedApplied || categoryApplied) {
+        setAiSuccessMessage('AI refined your description and selected the matching category. You can continue editing both below.');
+      }
+    } catch {
+      // Graceful fallback: do not block user
     } finally {
       setAiLoading(false);
     }
@@ -120,12 +126,12 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
 
   return (
     <div style={{ maxWidth: '750px', margin: '2rem auto', background: '#ffffff', padding: '2rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-      <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Submit a Community Issue</h2>
+      <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', fontWeight: 700 }}>Submit a Community Issue</h2>
       <p style={{ color: '#64748b', marginBottom: '1.5rem', fontSize: '0.875rem' }}>
         Report a problem in shared spaces. Staff will review, route, and resolve it according to defined service targets.
       </p>
 
-      {/* Immediate Danger Notice (Rule 8.13) */}
+      {/* Immediate Danger Notice */}
       <div style={{ background: '#fef2f2', border: '1px solid #ef4444', borderRadius: '6px', padding: '12px', marginBottom: '1.5rem', color: '#991b1b', fontSize: '0.875rem' }}>
         <strong>Notice:</strong> If there is immediate danger, contact local emergency services now. CivicFix is not an emergency service.
       </div>
@@ -133,6 +139,12 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
       {error && (
         <div style={{ background: '#fef2f2', border: '1px solid #f87171', color: '#991b1b', padding: '10px', borderRadius: '4px', marginBottom: '1rem', fontSize: '0.875rem' }}>
           {error}
+        </div>
+      )}
+
+      {aiSuccessMessage && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', padding: '10px 12px', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.875rem' }}>
+          {aiSuccessMessage}
         </div>
       )}
 
@@ -157,150 +169,54 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
             style={{ width: '100%', padding: '0.75rem', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.875rem' }}
           />
 
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+          {/* Single "Done" button (Requirement 4) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem' }}>
             <button
               type="button"
-              onClick={handleImproveWithAI}
+              onClick={handleDoneWithAI}
               disabled={aiLoading || !description.trim()}
               style={{
-                fontSize: '0.75rem',
-                padding: '4px 8px',
-                background: '#f1f5f9',
-                border: '1px solid #cbd5e1',
+                fontSize: '0.875rem',
+                padding: '6px 14px',
+                background: '#2563eb',
+                color: '#ffffff',
+                border: 'none',
                 borderRadius: '4px',
-                color: '#1e293b',
+                fontWeight: 600,
+                cursor: description.trim() ? 'pointer' : 'not-allowed',
+                opacity: description.trim() ? 1 : 0.6,
               }}
             >
-              {aiLoading ? 'Analyzing...' : 'AI Suggestion: Improve Clarity'}
+              {aiLoading ? 'Processing with AI...' : 'Done'}
             </button>
-
-            <button
-              type="button"
-              onClick={handleSuggestCategoryWithAI}
-              disabled={aiLoading || !description.trim()}
-              style={{
-                fontSize: '0.75rem',
-                padding: '4px 8px',
-                background: '#f1f5f9',
-                border: '1px solid #cbd5e1',
-                borderRadius: '4px',
-                color: '#1e293b',
-              }}
-            >
-              AI Suggestion: Recommend Category
-            </button>
-          </div>
-        </div>
-
-        {/* AI Improvement Suggestion Panel */}
-        {aiImprovementSuggestion && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '6px', padding: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', background: '#dcfce7', padding: '2px 6px', borderRadius: '4px' }}>
-                AI suggestion (Clarity Improvement)
-              </span>
-              <button
-                type="button"
-                onClick={() => setAiImprovementSuggestion(null)}
-                style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.75rem' }}
-              >
-                Dismiss
-              </button>
-            </div>
-            <p style={{ fontSize: '0.875rem', color: '#14532d', marginBottom: '8px' }}>
-              {aiImprovementSuggestion}
-            </p>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setDescription(aiImprovementSuggestion);
-                  setDescriptionImproved(aiImprovementSuggestion);
-                  setAiImprovementSuggestion(null);
-                }}
-                style={{ fontSize: '0.75rem', padding: '4px 10px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 600 }}
-              >
-                Accept Suggestion
-              </button>
-              <button
-                type="button"
-                onClick={() => setAiImprovementSuggestion(null)}
-                style={{ fontSize: '0.75rem', padding: '4px 10px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px' }}
-              >
-                Keep Original Text
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* AI Category Suggestion Panel */}
-        {aiCategorySuggestion && (
-          <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: '6px', padding: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e40af', background: '#dbeafe', padding: '2px 6px', borderRadius: '4px' }}>
-                AI suggestion (Category: {aiCategorySuggestion.name})
-              </span>
-              <span style={{ fontSize: '0.75rem', color: '#3b82f6' }}>
-                Confidence: {aiCategorySuggestion.confidence}
-              </span>
-            </div>
-            <p style={{ fontSize: '0.875rem', color: '#1e3a8a', marginBottom: '8px' }}>
-              Reason: {aiCategorySuggestion.reason}
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setCategoryId(aiCategorySuggestion.id);
-                setAiCategorySuggestion(null);
-              }}
-              style={{ fontSize: '0.75rem', padding: '4px 10px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 600 }}
-            >
-              Apply Category ({aiCategorySuggestion.name})
-            </button>
-          </div>
-        )}
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-          <div>
-            <label htmlFor="category" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 600 }}>
-              Category
-            </label>
-            <select
-              id="category"
-              value={categoryId || ''}
-              onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : undefined)}
-              style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }}
-            >
-              <option value="">Unassigned / General</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="severity" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 600 }}>
-              Initial Severity
-            </label>
-            <select
-              id="severity"
-              value={baseSeverity}
-              onChange={(e) => setBaseSeverity(e.target.value)}
-              style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }}
-            >
-              <option value="LOW">Low - Minor inconvenience</option>
-              <option value="MEDIUM">Medium - Normal maintenance issue</option>
-              <option value="HIGH">High - Significant disruption</option>
-              <option value="CRITICAL">Critical - Immediate risk</option>
-            </select>
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+              Click Done to refine clarity and automatically select the appropriate category.
+            </span>
           </div>
         </div>
 
         <div>
+          <label htmlFor="category" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 600 }}>
+            Category *
+          </label>
+          <select
+            id="category"
+            value={categoryId || ''}
+            onChange={(e) => setCategoryId(Number(e.target.value))}
+            required
+            style={{ width: '100%', padding: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.875rem' }}
+          >
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} {c.description ? ` - ${c.description}` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
           <label htmlFor="location" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 600 }}>
-            Location Description or Address *
+            Location / Address *
           </label>
           <input
             id="location"
@@ -308,25 +224,63 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
             value={locationText}
             onChange={(e) => setLocationText(e.target.value)}
             required
-            placeholder="e.g. Near Flat 302, Tower B or 5th Cross Road, Ward 12"
-            style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+            placeholder="Street address, flat number, or landmark..."
+            style={{ width: '100%', padding: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.875rem' }}
           />
+          <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginTop: '2px' }}>
+            Pre-filled from your registered permanent location. You can modify it for this specific report if needed.
+          </span>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{ padding: '0.6rem 1.25rem', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', fontWeight: 600 }}
+        <div>
+          <label htmlFor="severity" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 600 }}>
+            Initial Severity
+          </label>
+          <select
+            id="severity"
+            value={baseSeverity}
+            onChange={(e) => setBaseSeverity(e.target.value)}
+            style={{ width: '100%', padding: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.875rem' }}
           >
-            Cancel
-          </button>
+            <option value="LOW">Low (Cosmetic, minor inconvenience)</option>
+            <option value="MEDIUM">Medium (Normal civic issue)</option>
+            <option value="HIGH">High (Active disruption, hazardous conditions)</option>
+            <option value="CRITICAL">Critical (Immediate safety risk)</option>
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
           <button
             type="submit"
             disabled={loading}
-            style={{ padding: '0.6rem 1.25rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 600 }}
+            style={{
+              flex: 1,
+              padding: '0.75rem',
+              background: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: 600,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+            }}
           >
             {loading ? 'Submitting Report...' : 'Submit Report'}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: '#f1f5f9',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
           </button>
         </div>
       </form>

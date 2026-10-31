@@ -58,17 +58,17 @@ def seed_database():
         hashed_pwd = hash_password(DEMO_PASSWORD)
 
         users_data = [
-            ("platform.admin@civicfix.org", "Platform Administrator", "9999900000"),
-            ("muni.admin@metro.gov", "Municipal Administrator", "9999911111"),
-            ("muni.staff@metro.gov", "Rajesh Kumar (Field Officer)", "9999922222"),
-            ("muni.citizen@metro.gov", "Sunita Rao (Citizen)", "9999933333"),
-            ("apt.admin@palm.res", "Apartment Estate Manager", "9999944444"),
-            ("apt.staff@palm.res", "Kavita Nair (Maintenance Head)", "9999955555"),
-            ("apt.resident@palm.res", "Deepak Verma (Resident Flat 402)", "9999966666"),
+            ("platform.admin@civicfix.org", "Platform Administrator", "9999900000", "CivicFix Command Center"),
+            ("muni.admin@metro.gov", "Municipal Administrator", "9999911111", "Municipal HQ, Metro City"),
+            ("muni.staff@metro.gov", "Rajesh Kumar (Field Officer)", "9999922222", "Central Depot, Ward 12, Metro City"),
+            ("muni.citizen@metro.gov", "Sunita Rao (Citizen)", "9999933333", "4th Cross, 5th Main, Indiranagar, Metro City"),
+            ("apt.admin@palm.res", "Apartment Estate Manager", "9999944444", "Clubhouse Office, Palm Meadows"),
+            ("apt.staff@palm.res", "Kavita Nair (Maintenance Head)", "9999955555", "Maintenance Bay, Basement 1, Palm Meadows"),
+            ("apt.resident@palm.res", "Deepak Verma (Resident Flat 402)", "9999966666", "Flat 402, Block B, Palm Meadows, Bangalore"),
         ]
 
         user_map = {}
-        for email, full_name, phone in users_data:
+        for email, full_name, phone, loc in users_data:
             u = db.query(User).filter(User.email == email).first()
             if not u:
                 u = User(
@@ -76,9 +76,13 @@ def seed_database():
                     hashed_password=hashed_pwd,
                     full_name=full_name,
                     phone_number=phone,
+                    permanent_location=loc,
                     is_active=True,
                 )
                 db.add(u)
+                db.flush()
+            else:
+                u.permanent_location = loc
                 db.flush()
             user_map[email] = u
 

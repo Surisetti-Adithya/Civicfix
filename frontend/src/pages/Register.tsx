@@ -8,6 +8,7 @@ export default function Register({ onLoginClick, onSuccess }: { onLoginClick: ()
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [permanentLocation, setPermanentLocation] = useState('');
   const [orgId, setOrgId] = useState<number | undefined>(undefined);
   const [role, setRole] = useState('CITIZEN');
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -30,7 +31,7 @@ export default function Register({ onLoginClick, onSuccess }: { onLoginClick: ()
     setError('');
     setLoading(true);
     try {
-      await register(email, password, fullName, orgId, role);
+      await register(email, password, fullName, orgId, role, permanentLocation);
       onSuccess();
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please check your information.');
@@ -59,6 +60,21 @@ export default function Register({ onLoginClick, onSuccess }: { onLoginClick: ()
             type="text"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
+            required
+            style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="reg-location" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 600 }}>
+            Permanent Location / Address
+          </label>
+          <input
+            id="reg-location"
+            type="text"
+            value={permanentLocation}
+            onChange={(e) => setPermanentLocation(e.target.value)}
+            placeholder="e.g., 4th Cross, 5th Main, Indiranagar"
             required
             style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }}
           />

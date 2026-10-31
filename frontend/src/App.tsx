@@ -3,12 +3,13 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Profile from './pages/Profile';
 import NewComplaint from './pages/NewComplaint';
 import ComplaintList from './pages/ComplaintList';
 import ComplaintDetail from './pages/ComplaintDetail';
 import DisasterOps from './pages/DisasterOps';
 import AdminPanel from './pages/AdminPanel';
-import PublicMetrics from './pages/PublicMetrics';
+import Reports from './pages/Reports';
 
 function MainContent() {
   const { user, role, loading } = useAuth();
@@ -47,6 +48,11 @@ function MainContent() {
           />
         )}
 
+        {/* Profile View (Requirements 3, 7, 11) */}
+        {currentView === 'profile' && (
+          <Profile onSelectComplaint={navigateToComplaint} />
+        )}
+
         {currentView === 'new-complaint' && (
           <NewComplaint
             onSuccess={(id) => navigateToComplaint(id)}
@@ -76,10 +82,12 @@ function MainContent() {
           <AdminPanel />
         )}
 
-        {currentView === 'public-metrics' && (
-          <PublicMetrics />
+        {/* Reports View (Requirements 9, 10, 12) */}
+        {(currentView === 'reports' || currentView === 'public-metrics') && (
+          <Reports />
         )}
 
+        {/* Dashboard View (Requirements 8, 10) */}
         {currentView === 'dashboard' && (
           <div>
             {!user ? (
@@ -91,13 +99,13 @@ function MainContent() {
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
                   <button
                     onClick={() => setCurrentView('login')}
-                    style={{ padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 600 }}
+                    style={{ padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}
                   >
                     Sign In
                   </button>
                   <button
                     onClick={() => setCurrentView('register')}
-                    style={{ padding: '10px 20px', background: '#ffffff', color: '#2563eb', border: '1px solid #2563eb', borderRadius: '6px', fontWeight: 600 }}
+                    style={{ padding: '10px 20px', background: '#ffffff', color: '#2563eb', border: '1px solid #2563eb', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}
                   >
                     Register Account
                   </button>
@@ -107,26 +115,28 @@ function MainContent() {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
                   <div>
-                    <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>
-                      {role === 'CITIZEN' ? 'My Reported Issues' : 'Organization Workspace'}
+                    <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
+                      {role === 'CITIZEN' ? 'Nearby Reports' : 'Organization Workspace'}
                     </h1>
-                    <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+                    <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '4px' }}>
                       {role === 'CITIZEN'
-                        ? 'Track and monitor issues you have submitted.'
+                        ? 'Community and nearby issues reported in your neighborhood.'
                         : 'Review reports, route to teams, and update statuses.'}
                     </p>
                   </div>
 
                   <button
                     onClick={() => setCurrentView('new-complaint')}
-                    style={{ padding: '8px 16px', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '6px', fontWeight: 600, fontSize: '0.875rem' }}
+                    style={{ padding: '8px 18px', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '6px', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' }}
                   >
                     + Submit New Report
                   </button>
                 </div>
 
+                {/* Requirement 8: Nearby Reports section on Dashboard */}
                 <ComplaintList
-                  title={role === 'CITIZEN' ? 'My Submissions' : 'All Open Reports'}
+                  title={role === 'CITIZEN' ? 'Nearby Reports' : 'All Open Reports'}
+                  scope={role === 'CITIZEN' ? 'nearby' : undefined}
                   onSelectComplaint={navigateToComplaint}
                 />
               </div>

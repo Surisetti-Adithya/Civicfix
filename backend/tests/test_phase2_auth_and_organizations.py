@@ -44,6 +44,15 @@ def test_registration_and_login(client):
     assert login_res.status_code == 200
     assert "token" in login_res.json()
 
+    # Update profile (permanent location)
+    prof_res = client.patch(
+        "/api/auth/profile",
+        json={"permanent_location": "4th Cross, 5th Main, Indiranagar"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert prof_res.status_code == 200
+    assert prof_res.json()["user"]["permanent_location"] == "4th Cross, 5th Main, Indiranagar"
+
     # Wrong password
     bad_login = client.post(
         "/api/auth/login",

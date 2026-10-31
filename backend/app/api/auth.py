@@ -17,6 +17,7 @@ from backend.app.schemas.auth import (
     OrganizationBrief,
     MembershipBrief,
     SwitchOrgRequest,
+    UpdateProfileRequest,
 )
 from backend.app.schemas.common import MessageResponse
 
@@ -78,6 +79,7 @@ def register(payload: UserRegister, db: DBSession = Depends(get_db)):
         hashed_password=hash_password(payload.password),
         full_name=payload.full_name.strip(),
         phone_number=payload.phone_number,
+        permanent_location=payload.permanent_location.strip() if payload.permanent_location else None,
         is_active=True,
     )
     db.add(user)
@@ -183,6 +185,24 @@ def get_me(
     db: DBSession = Depends(get_db),
 ):
     session_record, user = session_and_user
+    return build_session_response(db, session_record, user)
+
+
+@router.patch("/profile", response_model=SessionResponse)
+def update_profile(
+    payload: UpdateProfileRequest,
+    session_and_user: Tuple[Session, User] = Depends(get_current_session_and_user),
+    db: DBSession = Depends(get_db),
+):
+    session_record, user = session_and_user
+    if payload.full_name is not None:
+        user.full_name = payload.full_name.strip()
+    if payload.phone_number is not None:
+        user.phone_number = payload.phone_number.strip()
+    if payload.permanent_location is not None:
+        user.permanent_location = payload.permanent_location.strip()
+    db.commit()
+    db.refresh(user)
     return build_session_response(db, session_record, user)
 
 
