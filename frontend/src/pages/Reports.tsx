@@ -21,6 +21,21 @@ interface PublicMetricsData {
   total_recorded_period: number;
 }
 
+// Haversine formula to calculate distance in kilometers between two GPS coordinates
+function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth's radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export default function Reports() {
   const { user, activeOrg } = useAuth();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -77,16 +92,27 @@ export default function Reports() {
   const wholeTotal = complaints.length;
 
   // 2. My Region Nearby (~0.5 km)
-  // Filter by matching user's permanent location keywords, or proximity
+  // Use exact GPS proximity when coordinates are available, falling back to address keyword matching
+  const userLat = user?.home_latitude ?? 12.9716;
+  const userLng = user?.home_longitude ?? 77.5946;
+
   const userLocKeywords = (user?.permanent_location || 'Indiranagar 4th Cross')
     .toLowerCase()
     .split(/[\s,]+/)
     .filter((w) => w.length > 3);
 
   const nearbyComplaints = complaints.filter((c) => {
-    if (!userLocKeywords.length) return true;
-    const locLower = (c.location_text || '').toLowerCase();
-    return userLocKeywords.some((kw) => locLower.includes(kw));
+    // 1. If complaint and user both have GPS coordinates, calculate distance
+    if (c.latitude != null && c.longitude != null) {
+      const dist = calculateDistanceKm(userLat, userLng, c.latitude, c.longitude);
+      if (dist <= 1.0) return true; // within 1.0 km radius
+    }
+    // 2. Keyword fallback matching
+    if (userLocKeywords.length > 0) {
+      const locLower = (c.location_text || '').toLowerCase();
+      if (userLocKeywords.some((kw) => locLower.includes(kw))) return true;
+    }
+    return false;
   });
 
   // If filter matched none (or very few), fallback to local cluster
