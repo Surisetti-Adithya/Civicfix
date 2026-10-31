@@ -201,6 +201,10 @@ def update_profile(
         user.phone_number = payload.phone_number.strip()
     if payload.permanent_location is not None:
         user.permanent_location = payload.permanent_location.strip()
+    if payload.home_latitude is not None:
+        user.home_latitude = payload.home_latitude
+    if payload.home_longitude is not None:
+        user.home_longitude = payload.home_longitude
     db.commit()
     db.refresh(user)
     return build_session_response(db, session_record, user)

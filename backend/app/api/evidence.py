@@ -34,8 +34,8 @@ async def upload_evidence(
             status_code=404,
         )
 
-    # Permission check: reporter or staff/admin
-    if ctx.role == RoleEnum.CITIZEN.value and complaint.reporter_id != ctx.user.id:
+    # Permission check: citizens can contribute extra evidence to any complaint in their organization
+    if complaint.organization_id != ctx.organization_id:
         raise CivicFixException(
             code="PERMISSION_DENIED",
             message="You do not have permission to upload evidence for this complaint.",
@@ -99,6 +99,15 @@ async def upload_evidence(
         file_hash=file_hash,
     )
     db.add(evidence)
+
+    # Award Trust Level when contributing extra photo/evidence
+    if complaint.reporter_id != ctx.user.id:
+        if complaint.reporter:
+            complaint.reporter.trust_level = (complaint.reporter.trust_level or 50) + 15
+        ctx.user.trust_level = (ctx.user.trust_level or 50) + 10
+    else:
+        ctx.user.trust_level = (ctx.user.trust_level or 50) + 10
+
     db.commit()
     db.refresh(evidence)
 

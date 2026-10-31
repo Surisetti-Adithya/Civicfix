@@ -54,6 +54,7 @@ class VerificationAnswerEnum(str, enum.Enum):
     STILL_EXISTS = "STILL_EXISTS"
     APPEARS_RESOLVED = "APPEARS_RESOLVED"
     NEEDS_REVIEW = "NEEDS_REVIEW"
+    VERIFIED_REAL = "VERIFIED_REAL"
 
 
 class DeadlineModeEnum(str, enum.Enum):
@@ -94,8 +95,37 @@ class User(Base):
     full_name = Column(String(255), nullable=False)
     phone_number = Column(String(50), nullable=True)
     permanent_location = Column(String(500), nullable=True)
+    trust_level = Column(Integer, default=50, nullable=False)
+    home_latitude = Column(Float, nullable=True)
+    home_longitude = Column(Float, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    @property
+    def badge_title(self) -> str:
+        lvl = self.trust_level or 0
+        if lvl >= 500:
+            return "Civic Champion"
+        elif lvl >= 250:
+            return "Community Guardian"
+        elif lvl >= 100:
+            return "Trusted Citizen"
+        elif lvl >= 25:
+            return "Active Contributor"
+        return "New Resident"
+
+    @property
+    def badge_tier(self) -> str:
+        lvl = self.trust_level or 0
+        if lvl >= 500:
+            return "PLATINUM"
+        elif lvl >= 250:
+            return "GOLD"
+        elif lvl >= 100:
+            return "SILVER"
+        elif lvl >= 25:
+            return "BRONZE"
+        return "NEW"
 
     memberships = relationship("Membership", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")

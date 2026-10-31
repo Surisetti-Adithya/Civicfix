@@ -43,20 +43,26 @@ def get_verification_summary(
         VerificationAnswerEnum.STILL_EXISTS.value: 0,
         VerificationAnswerEnum.APPEARS_RESOLVED.value: 0,
         VerificationAnswerEnum.NEEDS_REVIEW.value: 0,
+        VerificationAnswerEnum.VERIFIED_REAL.value: 0,
     }
 
     user_answer = None
     for r in records:
         if r.answer in counts:
             counts[r.answer] += 1
+        else:
+            counts[r.answer] = 1
         if r.user_id == ctx.user.id:
             user_answer = r.answer
+
+    verified_count = counts.get(VerificationAnswerEnum.VERIFIED_REAL.value, 0) + counts.get(VerificationAnswerEnum.STILL_EXISTS.value, 0)
 
     return VerificationSummary(
         complaint_id=complaint_id,
         total_responses=len(records),
         counts=counts,
         user_answer=user_answer,
+        verified_count=verified_count,
     )
 
 
@@ -107,6 +113,12 @@ def submit_verification(
             notes=payload.notes,
         )
         db.add(record)
+
+        # Citizen verification increases Trust Level (like/trust metric)
+        if complaint.reporter:
+            complaint.reporter.trust_level = (complaint.reporter.trust_level or 50) + 5
+        if ctx.user:
+            ctx.user.trust_level = (ctx.user.trust_level or 50) + 2
 
     db.commit()
 

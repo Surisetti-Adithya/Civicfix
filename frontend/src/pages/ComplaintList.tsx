@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiRequest } from '../api/client';
 import { Complaint, PaginatedResponse } from '../types';
+import { MapPin } from 'lucide-react';
 
 interface ComplaintListProps {
   onSelectComplaint: (id: number) => void;
@@ -176,8 +177,14 @@ export default function ComplaintList({ onSelectComplaint, title = "Issues & Rep
                     </span>
                   </div>
 
-                  <p style={{ fontSize: '0.875rem', color: '#334155', margin: '4px 0' }}>
-                    {item.location_text}
+                  <p style={{ fontSize: '0.875rem', color: '#334155', margin: '4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <MapPin size={14} color="#dc2626" />
+                    <span>{item.location_text}</span>
+                    {item.latitude && item.longitude && (
+                      <span style={{ fontSize: '0.7rem', color: '#2563eb', background: '#eff6ff', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                        Mapped ({item.latitude.toFixed(3)}, {item.longitude.toFixed(3)})
+                      </span>
+                    )}
                   </p>
 
                   <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>

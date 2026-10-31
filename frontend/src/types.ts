@@ -12,6 +12,19 @@ export interface User {
   permanent_location?: string | null;
   is_active: boolean;
   created_at: string;
+  trust_level?: number;
+  badge_title?: string;
+  badge_tier?: string;
+  home_latitude?: number | null;
+  home_longitude?: number | null;
+}
+
+export interface VerificationSummary {
+  complaint_id: number;
+  total_responses: number;
+  counts: Record<string, number>;
+  user_answer?: string | null;
+  verified_count: number;
 }
 
 export interface Organization {

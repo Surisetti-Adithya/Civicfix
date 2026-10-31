@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { apiRequest } from '../api/client';
-import { Complaint, Team } from '../types';
+import { Complaint, Team, VerificationSummary } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { TrustBadge } from '../components/TrustBadge';
+import { LocationPicker } from '../components/LocationPicker';
+import { CheckCircle2, ShieldCheck, PlusCircle, MapPin } from 'lucide-react';
 
 interface ComplaintDetailProps {
   complaintId: number;
@@ -11,6 +14,7 @@ interface ComplaintDetailProps {
 export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetailProps) {
   const { user, role } = useAuth();
   const [complaint, setComplaint] = useState<Complaint | null>(null);
+  const [verification, setVerification] = useState<VerificationSummary | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -30,7 +34,19 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
   const [reopenReason, setReopenReason] = useState('');
   const [reopenSubmitting, setReopenSubmitting] = useState(false);
 
-  // Evidence upload state
+  // Verification state
+  const [verifying, setVerifying] = useState(false);
+
+  // Extra info contribution state
+  const [extraInfoText, setExtraInfoText] = useState('');
+  const [extraLocationText, setExtraLocationText] = useState('');
+  const [extraLat, setExtraLat] = useState<number | null>(null);
+  const [extraLng, setExtraLng] = useState<number | null>(null);
+  const [extraFile, setExtraFile] = useState<File | null>(null);
+  const [submittingExtra, setSubmittingExtra] = useState(false);
+  const [showExtraForm, setShowExtraForm] = useState(false);
+
+  // Standalone Evidence upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
 
@@ -40,6 +56,18 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
     try {
       const data = await apiRequest<Complaint>(`/complaints/${complaintId}`);
       setComplaint(data);
+      if (data.latitude) setExtraLat(data.latitude);
+      if (data.longitude) setExtraLng(data.longitude);
+      if (data.location_text) setExtraLocationText(data.location_text);
+
+      // Fetch verification summary
+      try {
+        const verData = await apiRequest<VerificationSummary>(`/complaints/${complaintId}/verifications`);
+        setVerification(verData);
+      } catch {
+        // non-blocking
+      }
+
       if (role === 'STAFF' || role === 'ORG_ADMIN' || role === 'PLATFORM_ADMIN') {
         const teamsData = await apiRequest<Team[]>('/teams');
         setTeams(teamsData);
@@ -55,6 +83,84 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
   useEffect(() => {
     fetchComplaint();
   }, [complaintId]);
+
+  const handleVerify = async () => {
+    setVerifying(true);
+    setError('');
+    setActionSuccess('');
+    try {
+      const updatedSummary = await apiRequest<VerificationSummary>(`/complaints/${complaintId}/verifications`, {
+        method: 'POST',
+        body: JSON.stringify({ answer: 'VERIFIED_REAL', notes: 'Verified as authentic by community citizen.' }),
+      });
+      setVerification(updatedSummary);
+      setActionSuccess('Report verified! Author received +5 trust points, and you received +2 trust points.');
+      // Refresh complaint to reflect author's updated trust level
+      const updatedComplaint = await apiRequest<Complaint>(`/complaints/${complaintId}`);
+      setComplaint(updatedComplaint);
+    } catch (err: any) {
+      setError(err.message || 'Failed to verify report.');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleAddExtraInfo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extraInfoText.trim() && !extraFile && !extraLocationText.trim()) {
+      setError('Please provide text information, an updated location, or attach a photo.');
+      return;
+    }
+    setSubmittingExtra(true);
+    setError('');
+    setActionSuccess('');
+
+    try {
+      // 1. Submit text and location updates
+      const updatedComplaint = await apiRequest<Complaint>(`/complaints/${complaintId}/extra-info`, {
+        method: 'POST',
+        body: JSON.stringify({
+          information: extraInfoText.trim() || 'Contributed additional details / media.',
+          updated_location: extraLocationText.trim() || undefined,
+          latitude: extraLat ?? undefined,
+          longitude: extraLng ?? undefined,
+        }),
+      });
+      setComplaint(updatedComplaint);
+
+      // 2. Submit evidence file if attached
+      if (extraFile) {
+        const formData = new FormData();
+        formData.append('file', extraFile);
+        const token = localStorage.getItem('civicfix_token');
+        const orgId = localStorage.getItem('civicfix_org_id');
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        if (orgId) headers['X-Organization-Id'] = orgId;
+
+        const res = await fetch(`/api/complaints/${complaintId}/evidence`, {
+          method: 'POST',
+          headers,
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const errJson = await res.json();
+          throw new Error(errJson.message || 'Evidence upload failed');
+        }
+      }
+
+      setExtraInfoText('');
+      setExtraFile(null);
+      setShowExtraForm(false);
+      setActionSuccess('Extra information contributed! Original reporter received +15 trust points, and you received +10 trust points.');
+      fetchComplaint();
+    } catch (err: any) {
+      setError(err.message || 'Failed to submit additional information.');
+    } finally {
+      setSubmittingExtra(false);
+    }
+  };
 
   const handleStatusUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,7 +254,7 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
       }
 
       setSelectedFile(null);
-      setActionSuccess('Evidence file uploaded successfully.');
+      setActionSuccess('Evidence file uploaded successfully! Trust points updated.');
       fetchComplaint();
     } catch (err: any) {
       setError(err.message || 'Failed to upload file.');
@@ -193,9 +299,11 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
 
   const isReporter = user?.id === complaint.reporter_id;
   const isStaffOrAdmin = role === 'STAFF' || role === 'ORG_ADMIN' || role === 'PLATFORM_ADMIN';
+  const hasUserVerified = verification?.user_answer === 'VERIFIED_REAL' || verification?.user_answer === 'STILL_EXISTS';
+  const verifiedCount = verification?.verified_count ?? 0;
 
   return (
-    <div style={{ maxWidth: '900px', margin: '1rem auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div style={{ maxWidth: '950px', margin: '1rem auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <button
         onClick={onBack}
         style={{
@@ -205,19 +313,20 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
           border: '1px solid #cbd5e1',
           borderRadius: '4px',
           fontSize: '0.875rem',
+          cursor: 'pointer',
         }}
       >
         &larr; Back to List
       </button>
 
       {error && (
-        <div style={{ background: '#fef2f2', border: '1px solid #f87171', color: '#991b1b', padding: '10px', borderRadius: '4px', fontSize: '0.875rem' }}>
+        <div style={{ background: '#fef2f2', border: '1px solid #f87171', color: '#991b1b', padding: '10px 14px', borderRadius: '6px', fontSize: '0.875rem' }}>
           {error}
         </div>
       )}
 
       {actionSuccess && (
-        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', padding: '10px', borderRadius: '4px', fontSize: '0.875rem' }}>
+        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', padding: '10px 14px', borderRadius: '6px', fontSize: '0.875rem' }}>
           {actionSuccess}
         </div>
       )}
@@ -226,11 +335,22 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
       <div style={{ background: '#ffffff', padding: '1.75rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
           <div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
-              {complaint.public_reference_number}
-            </h1>
-            <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-              Reported on {new Date(complaint.created_at).toLocaleString()}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
+                {complaint.public_reference_number}
+              </h1>
+              {complaint.reporter && (
+                <TrustBadge
+                  tier={complaint.reporter.badge_tier}
+                  title={complaint.reporter.badge_title}
+                  trustLevel={complaint.reporter.trust_level}
+                  showPoints={true}
+                  size="small"
+                />
+              )}
+            </div>
+            <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '4px' }}>
+              Reported by <strong>{complaint.reporter?.full_name || 'Citizen'}</strong> on {new Date(complaint.created_at).toLocaleString()}
             </p>
           </div>
 
@@ -274,6 +394,199 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
           </div>
         </div>
 
+        {/* Community Verification & Trust Bar */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '1rem',
+            padding: '12px 16px',
+            background: hasUserVerified ? '#f0fdf4' : '#f8fafc',
+            border: `1px solid ${hasUserVerified ? '#86efac' : '#e2e8f0'}`,
+            borderRadius: '6px',
+            marginBottom: '1.25rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <ShieldCheck size={22} color={hasUserVerified ? '#16a34a' : '#2563eb'} />
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1e293b' }}>
+                {verifiedCount} Citizen{verifiedCount === 1 ? '' : 's'} Verified This Report as Authentic
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                Verifying signifies trust in this issue and increases the author's Trust Level by +5 pts.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {hasUserVerified ? (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 14px',
+                  background: '#dcfce7',
+                  color: '#15803d',
+                  border: '1px solid #86efac',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                }}
+              >
+                <CheckCircle2 size={16} /> Verified by You
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleVerify}
+                disabled={verifying}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 16px',
+                  background: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <ShieldCheck size={16} />
+                {verifying ? 'Verifying...' : 'Verify Report (+2 pts)'}
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowExtraForm(!showExtraForm)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                background: '#f1f5f9',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                color: '#334155',
+              }}
+            >
+              <PlusCircle size={16} color="#0284c7" />
+              {showExtraForm ? 'Hide Contribution' : 'Add Extra Info / Photo (+10 pts)'}
+            </button>
+          </div>
+        </div>
+
+        {/* Extra Information Form */}
+        {showExtraForm && (
+          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '1.25rem', marginBottom: '1.5rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#1e3a8a', marginBottom: '0.35rem' }}>
+              Enrich this Report with Extra Information, Photos, or Updated Location
+            </h3>
+            <p style={{ fontSize: '0.8rem', color: '#3b82f6', marginBottom: '1rem' }}>
+              Contributing extra verified details awards +15 trust points to the author and +10 trust points to you!
+            </p>
+
+            <form onSubmit={handleAddExtraInfo} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+                  Additional Information / Updates
+                </label>
+                <textarea
+                  rows={3}
+                  value={extraInfoText}
+                  onChange={(e) => setExtraInfoText(e.target.value)}
+                  placeholder="Provide additional details, what changed, or specific repair landmarks..."
+                  style={{ width: '100%', padding: '0.65rem', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.875rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+                  Attach Photo / Document (Optional)
+                </label>
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.pdf,.txt"
+                  onChange={(e) => setExtraFile(e.target.files ? e.target.files[0] : null)}
+                  style={{ fontSize: '0.85rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+                  Adjust Problem Location on Map (Optional)
+                </label>
+                <LocationPicker
+                  latitude={extraLat ?? complaint.latitude}
+                  longitude={extraLng ?? complaint.longitude}
+                  onChange={(lat, lng) => {
+                    setExtraLat(lat);
+                    setExtraLng(lng);
+                  }}
+                  height="220px"
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+                  Updated Address / Landmark Text (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={extraLocationText}
+                  onChange={(e) => setExtraLocationText(e.target.value)}
+                  placeholder="Street address or exact spot description..."
+                  style={{ width: '100%', padding: '0.55rem', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.875rem' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="submit"
+                  disabled={submittingExtra}
+                  style={{
+                    padding: '8px 18px',
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    fontWeight: 600,
+                    fontSize: '0.875rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {submittingExtra ? 'Submitting Contribution...' : 'Submit Contribution'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowExtraForm(false)}
+                  style={{
+                    padding: '8px 14px',
+                    background: '#f1f5f9',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '4px',
+                    fontSize: '0.875rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Metadata summary */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', padding: '1rem', background: '#f8fafc', borderRadius: '6px', marginBottom: '1.5rem', fontSize: '0.875rem' }}>
           <div><strong>Category:</strong> {complaint.category?.name || 'Unassigned'}</div>
           <div><strong>Routing:</strong> {complaint.routing_result || 'Pending'}</div>
@@ -285,6 +598,22 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
             {complaint.is_overdue && <span style={{ color: '#dc2626', fontWeight: 700, marginLeft: '4px' }}>[Target Missed]</span>}
           </div>
         </div>
+
+        {/* Location Map View */}
+        {complaint.latitude && complaint.longitude && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0.5rem' }}>
+              <MapPin size={18} color="#dc2626" />
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Incident Location Map</h3>
+            </div>
+            <LocationPicker
+              latitude={complaint.latitude}
+              longitude={complaint.longitude}
+              readOnly={true}
+              height="240px"
+            />
+          </div>
+        )}
 
         <div style={{ marginBottom: '1.5rem' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Description</h3>
@@ -412,7 +741,9 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
 
       {/* Evidence Files Section */}
       <div style={{ background: '#ffffff', padding: '1.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.75rem' }}>Evidence and Attachments</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>Evidence and Photo Attachments</h3>
+        </div>
 
         {complaint.evidence_files && complaint.evidence_files.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -423,23 +754,33 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  padding: '8px 12px',
+                  padding: '10px 14px',
                   background: '#f8fafc',
                   border: '1px solid #e2e8f0',
-                  borderRadius: '4px',
+                  borderRadius: '6px',
                   fontSize: '0.875rem',
                 }}
               >
                 <div>
-                  <strong>{file.original_name}</strong>
-                  <span style={{ color: '#64748b', marginLeft: '8px' }}>
-                    ({(file.size_bytes / 1024).toFixed(1)} KB) - Hash: {file.file_hash.slice(0, 10)}...
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <strong>{file.original_name}</strong>
+                    {file.uploader && (
+                      <TrustBadge
+                        tier={file.uploader.badge_tier}
+                        title={file.uploader.badge_title}
+                        trustLevel={file.uploader.trust_level}
+                        size="small"
+                      />
+                    )}
+                  </div>
+                  <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                    Uploaded by {file.uploader?.full_name || 'Contributor'} &bull; {(file.size_bytes / 1024).toFixed(1)} KB &bull; SHA: {file.file_hash.slice(0, 10)}...
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => downloadFile(file.id)}
-                  style={{ padding: '4px 8px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.75rem' }}
+                  style={{ padding: '5px 10px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer' }}
                 >
                   Download File
                 </button>
@@ -448,33 +789,31 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
           </div>
         ) : (
           <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '1rem' }}>
-            No evidence files attached to this report yet.
+            No photos or evidence files attached yet.
           </p>
         )}
 
-        {(isReporter || isStaffOrAdmin) && (
-          <form onSubmit={handleUploadEvidence} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              type="file"
-              accept=".jpg,.jpeg,.png,.pdf,.txt"
-              onChange={(e) => setSelectedFile(e.target.files ? e.target.files[0] : null)}
-              required
-              style={{ fontSize: '0.875rem' }}
-            />
-            <button
-              type="submit"
-              disabled={uploadingFile || !selectedFile}
-              style={{ padding: '6px 12px', background: '#059669', color: '#ffffff', border: 'none', borderRadius: '4px', fontWeight: 600, fontSize: '0.875rem' }}
-            >
-              {uploadingFile ? 'Uploading...' : 'Upload Evidence'}
-            </button>
-          </form>
-        )}
+        <form onSubmit={handleUploadEvidence} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            type="file"
+            accept=".jpg,.jpeg,.png,.pdf,.txt"
+            onChange={(e) => setSelectedFile(e.target.files ? e.target.files[0] : null)}
+            required
+            style={{ fontSize: '0.875rem' }}
+          />
+          <button
+            type="submit"
+            disabled={uploadingFile || !selectedFile}
+            style={{ padding: '6px 14px', background: '#059669', color: '#ffffff', border: 'none', borderRadius: '4px', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' }}
+          >
+            {uploadingFile ? 'Uploading...' : 'Upload Evidence Photo (+10 pts)'}
+          </button>
+        </form>
       </div>
 
       {/* History Timeline */}
       <div style={{ background: '#ffffff', padding: '1.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>Audit Timeline and Event History</h3>
+        <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>Audit Timeline & Community Contributions</h3>
 
         {complaint.history && complaint.history.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -482,21 +821,31 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
               <div
                 key={h.id}
                 style={{
-                  borderLeft: '3px solid #3b82f6',
+                  borderLeft: h.field === 'extra_info' ? '3px solid #10b981' : '3px solid #3b82f6',
                   paddingLeft: '1rem',
-                  paddingTop: '2px',
-                  paddingBottom: '2px',
+                  paddingTop: '3px',
+                  paddingBottom: '3px',
                 }}
               >
-                <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>
-                  {h.field.toUpperCase()}: {h.old_value ? `${h.old_value} -> ` : ''}{h.new_value}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>
+                    {h.field === 'extra_info' ? 'COMMUNITY EXTRA INFORMATION' : h.field.toUpperCase()}: {h.old_value ? `${h.old_value} -> ` : ''}{h.new_value}
+                  </span>
+                  {h.actor && (
+                    <TrustBadge
+                      tier={h.actor.badge_tier}
+                      title={h.actor.badge_title}
+                      trustLevel={h.actor.trust_level}
+                      size="small"
+                    />
+                  )}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
                   {new Date(h.created_at).toLocaleString()} by {h.actor?.full_name || 'System / Auto'}
                 </div>
                 {h.notes && (
-                  <div style={{ fontSize: '0.8rem', color: '#334155', marginTop: '2px' }}>
-                    Notes: {h.notes}
+                  <div style={{ fontSize: '0.825rem', color: '#334155', marginTop: '2px', background: '#f8fafc', padding: '4px 8px', borderRadius: '4px' }}>
+                    {h.notes}
                   </div>
                 )}
               </div>

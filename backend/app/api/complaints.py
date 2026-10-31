@@ -23,6 +23,7 @@ from backend.app.schemas.complaint import (
     ComplaintStatusUpdate,
     ComplaintAssignRequest,
     ComplaintReopenRequest,
+    ExtraInfoRequest,
     ComplaintBrief,
     ComplaintDetail,
 )
@@ -151,14 +152,6 @@ def get_complaint(
             code="COMPLAINT_NOT_FOUND",
             message="Complaint not found.",
             status_code=404,
-        )
-
-    # CITIZEN access check
-    if ctx.role == RoleEnum.CITIZEN.value and complaint.reporter_id != ctx.user.id:
-        raise CivicFixException(
-            code="COMPLAINT_ACCESS_DENIED",
-            message="You do not have permission to view this complaint.",
-            status_code=403,
         )
 
     return ComplaintDetail.model_validate(complaint)
@@ -358,3 +351,58 @@ def reopen_complaint(
     db.commit()
     db.refresh(complaint)
     return ComplaintDetail.model_validate(complaint)
+
+
+@router.post("/{complaint_id}/extra-info", response_model=ComplaintDetail)
+def add_extra_info(
+    complaint_id: int,
+    payload: ExtraInfoRequest,
+    db: DBSession = Depends(get_db),
+    ctx: ActiveOrgContext = Depends(get_active_org_context),
+):
+    complaint = (
+        db.query(Complaint)
+        .filter(Complaint.id == complaint_id, Complaint.organization_id == ctx.organization_id)
+        .first()
+    )
+    if not complaint:
+        raise CivicFixException(
+            code="COMPLAINT_NOT_FOUND",
+            message="Complaint not found.",
+            status_code=404,
+        )
+
+    # If updated location given, update complaint location & coordinates
+    if payload.updated_location:
+        complaint.location_text = payload.updated_location.strip()
+    if payload.latitude is not None:
+        complaint.latitude = payload.latitude
+    if payload.longitude is not None:
+        complaint.longitude = payload.longitude
+
+    complaint.updated_at = datetime.datetime.now(datetime.timezone.utc)
+
+    # Log in complaint history
+    log_complaint_history(
+        db=db,
+        complaint_id=complaint.id,
+        actor_id=ctx.user.id,
+        field="extra_info",
+        old_value=None,
+        new_value=payload.information.strip(),
+        notes=payload.information.strip(),
+    )
+
+    # Award Trust Level points:
+    # Submitting extra info/pictures increases initial poster's trust by +15, contributor's by +10
+    if complaint.reporter_id != ctx.user.id:
+        if complaint.reporter:
+            complaint.reporter.trust_level = (complaint.reporter.trust_level or 50) + 15
+        ctx.user.trust_level = (ctx.user.trust_level or 50) + 10
+    else:
+        ctx.user.trust_level = (ctx.user.trust_level or 50) + 10
+
+    db.commit()
+    db.refresh(complaint)
+    return ComplaintDetail.model_validate(complaint)
+

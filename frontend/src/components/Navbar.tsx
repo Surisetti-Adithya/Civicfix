@@ -1,4 +1,5 @@
 import { useAuth } from '../context/AuthContext';
+import { TrustBadge } from './TrustBadge';
 
 interface NavbarProps {
   currentView: string;
@@ -44,12 +45,20 @@ export default function Navbar({ currentView, onNavigate }: NavbarProps) {
 
         {/* 2. Profile option (right next to CivicFix logo) */}
         {user ? (
-          <button
-            onClick={() => onNavigate('profile')}
-            style={navBtnStyle('profile')}
-          >
-            Profile
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={() => onNavigate('profile')}
+              style={navBtnStyle('profile')}
+            >
+              Profile
+            </button>
+            <TrustBadge
+              tier={user.badge_tier}
+              title={user.badge_title}
+              trustLevel={user.trust_level}
+              size="small"
+            />
+          </div>
         ) : (
           <button
             onClick={() => onNavigate('login')}

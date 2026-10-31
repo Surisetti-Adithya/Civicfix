@@ -10,7 +10,7 @@ interface AuthContextType {
   token: string | null;
   login: (email: string, pass: string, orgId?: number) => Promise<void>;
   register: (email: string, pass: string, fullName: string, orgId?: number, role?: string, permanentLocation?: string) => Promise<void>;
-  updateProfile: (profile: { full_name?: string; phone_number?: string; permanent_location?: string }) => Promise<void>;
+  updateProfile: (profile: { full_name?: string; phone_number?: string; permanent_location?: string; home_latitude?: number | null; home_longitude?: number | null }) => Promise<void>;
   logout: () => Promise<void>;
   switchOrg: (orgId: number) => Promise<void>;
   refreshAuth: () => Promise<void>;
@@ -88,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     applySession(data);
   };
 
-  const updateProfile = async (profile: { full_name?: string; phone_number?: string; permanent_location?: string }) => {
+  const updateProfile = async (profile: { full_name?: string; phone_number?: string; permanent_location?: string; home_latitude?: number | null; home_longitude?: number | null }) => {
     const data = await apiRequest<SessionResponse>('/auth/profile', {
       method: 'PATCH',
       body: JSON.stringify(profile),

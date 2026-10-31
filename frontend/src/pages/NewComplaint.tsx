@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { Category, Complaint } from '../types';
+import { LocationPicker } from '../components/LocationPicker';
 
 interface NewComplaintProps {
   onSuccess: (complaintId: number) => void;
@@ -14,6 +15,8 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
   const [descriptionImproved, setDescriptionImproved] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
   const [locationText, setLocationText] = useState('');
+  const [latitude, setLatitude] = useState<number | null>(user?.home_latitude ?? 12.9716);
+  const [longitude, setLongitude] = useState<number | null>(user?.home_longitude ?? 77.5946);
   const [baseSeverity, setBaseSeverity] = useState('MEDIUM');
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
@@ -23,10 +26,14 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuccessMessage, setAiSuccessMessage] = useState('');
 
-  // 1. Automatically fill address for citizen portal demo identity / user profile
+  // 1. Automatically fill address and map coordinates from user profile
   useEffect(() => {
     const defaultAddress = user?.permanent_location || '4th Cross, 5th Main, Indiranagar, Metro City';
     setLocationText(defaultAddress);
+    if (user?.home_latitude && user?.home_longitude) {
+      setLatitude(user.home_latitude);
+      setLongitude(user.home_longitude);
+    }
   }, [user]);
 
   useEffect(() => {
@@ -105,6 +112,8 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
         description_improved: descriptionImproved,
         category_id: categoryId,
         location_text: locationText.trim(),
+        latitude: latitude,
+        longitude: longitude,
         base_severity: baseSeverity,
       };
 
@@ -212,6 +221,26 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
               </option>
             ))}
           </select>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.875rem', fontWeight: 600 }}>
+            Problem Location on Map *
+          </label>
+          <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '0.5rem' }}>
+            Cursor defaults to your home location. Drag the red pin or click anywhere on the map to pinpoint the exact issue location.
+          </span>
+          <LocationPicker
+            latitude={latitude}
+            longitude={longitude}
+            homeLatitude={user?.home_latitude}
+            homeLongitude={user?.home_longitude}
+            onChange={(lat, lng) => {
+              setLatitude(lat);
+              setLongitude(lng);
+            }}
+            height="280px"
+          />
         </div>
 
         <div>

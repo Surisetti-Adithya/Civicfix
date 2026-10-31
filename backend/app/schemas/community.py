@@ -14,6 +14,7 @@ class VerificationSummary(BaseModel):
     total_responses: int
     counts: Dict[str, int]
     user_answer: Optional[str] = None
+    verified_count: int = 0
 
 
 class DuplicateGroupCreate(BaseModel):

@@ -81,6 +81,13 @@ class ComplaintReopenRequest(BaseModel):
     reason: str = Field(..., min_length=3, max_length=500)
 
 
+class ExtraInfoRequest(BaseModel):
+    information: str = Field(..., min_length=2, max_length=1500)
+    updated_location: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
 class ComplaintHistoryResponse(BaseModel):
     id: int
     complaint_id: int

@@ -8,6 +8,8 @@ class UserBase(BaseModel):
     full_name: str
     phone_number: Optional[str] = None
     permanent_location: Optional[str] = None
+    home_latitude: Optional[float] = None
+    home_longitude: Optional[float] = None
 
 
 class UserRegister(UserBase):
@@ -20,6 +22,8 @@ class UpdateProfileRequest(BaseModel):
     full_name: Optional[str] = None
     phone_number: Optional[str] = None
     permanent_location: Optional[str] = None
+    home_latitude: Optional[float] = None
+    home_longitude: Optional[float] = None
 
 
 class UserLogin(BaseModel):
@@ -31,6 +35,9 @@ class UserLogin(BaseModel):
 class UserResponse(UserBase):
     id: int
     is_active: bool
+    trust_level: int = 50
+    badge_title: Optional[str] = "Active Contributor"
+    badge_tier: Optional[str] = "BRONZE"
     created_at: datetime.datetime
 
     model_config = ConfigDict(from_attributes=True)
