@@ -4,7 +4,8 @@ import sys
 import random
 
 # Ensure workspace root is in sys.path
-sys.path.insert(0, "/home/alumina/civic")
+import pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from backend.app.core.database import SessionLocal, Base, engine
 from backend.app.core.security import hash_password

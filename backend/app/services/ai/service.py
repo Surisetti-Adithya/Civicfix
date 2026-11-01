@@ -43,6 +43,42 @@ def check_ai_rate_limit(user_id: int):
     _user_ai_calls[user_id].append(now)
 
 
+def assess_complaint_priority(description: str, category_name: Optional[str] = None) -> str:
+    """
+    Evaluates complaint text hazards and public disruption to determine priority.
+    """
+    text = (description + " " + (category_name or "")).lower()
+
+    # 1. Critical safety risks (life safety, active hazard, live wires, fire, flood deluge)
+    critical_terms = [
+        "burst", "spark", "electric", "fire", "danger", "flood", "collapse",
+        "live wire", "gas leak", "life safety", "high voltage", "explosion",
+        "electrocution", "toxic", "catastrophic", "open well", "deep trench"
+    ]
+    if any(term in text for term in critical_terms):
+        return "CRITICAL"
+
+    # 2. High disruption (sewer overflow, broken pipeline, deep pothole causing vehicle accidents, main road blockage)
+    high_terms = [
+        "overflow", "sewage", "deep pothole", "broken pipe", "accident", "urgent",
+        "no water", "contaminated", "traffic signal", "blocked road", "major leak",
+        "fallen tree", "ambulance", "hospital", "school junction"
+    ]
+    if any(term in text for term in high_terms):
+        return "HIGH"
+
+    # 3. Low urgency (minor cosmetic, paint, fading, minor debris)
+    low_terms = [
+        "minor", "cosmetic", "paint", "faded", "small scratch", "cleaning needed",
+        "non urgent", "aesthetic", "mild"
+    ]
+    if any(term in text for term in low_terms):
+        return "LOW"
+
+    # Default baseline
+    return "MEDIUM"
+
+
 def extract_numbers(text: str) -> set[str]:
     return set(re.findall(r"\b\d+(?:\.\d+)?\b", text))
 
@@ -148,6 +184,22 @@ async def improve_description_service(
             break
 
     if status != "SUCCESS" or not res_dict:
+        if status == "NO_API_KEY":
+            # Intelligent NLP heuristic fallback when external AI provider is offline/unconfigured
+            cleaned = description.strip()
+            if cleaned:
+                cleaned_sentence = cleaned[0].upper() + cleaned[1:]
+                if not cleaned_sentence.endswith((".", "!", "?")):
+                    cleaned_sentence += "."
+                improved_fallback = f"Observed issue: {cleaned_sentence}"
+                if verify_no_hallucinations(description, improved_fallback):
+                    log_ai_call(db, organization_id, "improve-description", "heuristic-fallback", "SUCCESS", latency_ms, input_size)
+                    return ImproveDescriptionResponse(
+                        improved_description=improved_fallback,
+                        original_description=description,
+                        is_ai_suggestion=True,
+                    )
+
         log_ai_call(db, organization_id, "improve-description", provider.model_name, status, latency_ms, input_size)
         return ImproveDescriptionResponse(
             improved_description=None,
@@ -231,6 +283,48 @@ async def suggest_category_service(
             break
 
     if status != "SUCCESS" or not res_dict:
+        if status == "NO_API_KEY":
+            # Intelligent category keyword matching fallback when no API key configured
+            desc_lower = description.lower()
+            best_cat_id = None
+            best_score = 0
+            best_reason = ""
+
+            category_keywords = {
+                "pothole": ["pothole", "cracked", "asphalt", "road", "tar", "street", "footpath", "sidewalk", "divider"],
+                "water": ["water", "pipe", "leak", "valve", "supply", "drinking", "burst", "pressure", "tap"],
+                "drainage": ["drain", "drainage", "sewage", "clogged", "overflow", "gutter", "manhole", "culvert"],
+                "sanitation": ["garbage", "trash", "waste", "bin", "dump", "smell", "debris", "litter", "rubbish"],
+                "lighting": ["light", "street light", "dark", "pole", "wire", "lamp", "bulb", "electricity", "spark"],
+                "parks": ["tree", "branch", "park", "garden", "grass", "playground", "bench"],
+            }
+
+            for c in categories:
+                c_text = f"{c.name} {c.description or ''}".lower()
+                score = 0
+                for term in c_text.split():
+                    if len(term) > 3 and term in desc_lower:
+                        score += 3
+                for group, kws in category_keywords.items():
+                    if group in c_text:
+                        for kw in kws:
+                            if kw in desc_lower:
+                                score += 2
+                if score > best_score:
+                    best_score = score
+                    best_cat_id = c.id
+                    best_reason = f"Identified relevant category '{c.name}' based on reported civic conditions."
+
+            if best_cat_id:
+                log_ai_call(db, organization_id, "suggest-category", "heuristic-matcher", "SUCCESS", latency_ms, input_size)
+                return SuggestCategoryResponse(
+                    category_id=best_cat_id,
+                    category_name=category_id_map.get(best_cat_id),
+                    reason=best_reason,
+                    confidence="HIGH" if best_score >= 3 else "MEDIUM",
+                    is_ai_suggestion=True,
+                )
+
         log_ai_call(db, organization_id, "suggest-category", provider.model_name, status, latency_ms, input_size)
         return SuggestCategoryResponse(
             category_id=None,
@@ -511,3 +605,104 @@ async def check_complaint_similarity_service(
         return best_candidate, reason, prelim_score
 
     return None
+
+
+async def analyze_suspicious_patterns_service(
+    citizen_id: int,
+    organization_id: int,
+    db: DBSession,
+) -> Any:
+    from backend.app.models import User
+    from backend.app.schemas.trust import CitizenPatternAnalysisOutput, GemmaPatternAnalysisResponse
+    from backend.app.services.trust_service import detect_suspicious_patterns
+
+    citizen = db.query(User).filter(User.id == citizen_id).first()
+    if not citizen:
+        raise CivicFixException(code="USER_NOT_FOUND", message="Citizen not found.", status_code=404)
+
+    # Heuristic data extraction
+    pattern_data = detect_suspicious_patterns(db, citizen_id, organization_id)
+    flags = pattern_data["suspicious_flags"]
+    total_rep = pattern_data["total_reports"]
+    rej_rep = pattern_data["rejected_reports"]
+    verifs = pattern_data["total_verifications"]
+
+    provider = get_ai_provider()
+
+    system_prompt = (
+        "You are Gemma, an AI assistant analyzing civic issue reporting patterns for administrative review. "
+        "Review the citizen's reporting statistics, rejection rates, verification records, and flagged anomalies. "
+        "Identify whether the behavior indicates genuine community participation, accidental duplicates, or suspicious spam patterns. "
+        "CRITICAL RULE: Gemma recommendations are advisory only. You must NEVER automatically ban a citizen or make the final decision. "
+        "You may recommend a trust-score adjustment or suggest flagging for human review."
+    )
+
+    complaint_samples = [
+        f"- Reference {c.public_reference_number} [{c.status}]: {c.description_original[:120]}"
+        for c in pattern_data["complaints"][:5]
+    ]
+    sample_text = "\n".join(complaint_samples) if complaint_samples else "No complaint samples available."
+
+    prompt = (
+        f"Citizen Name: {citizen.full_name}\n"
+        f"Total Reports Submitted: {total_rep}\n"
+        f"Rejected Reports Count: {rej_rep}\n"
+        f"Community Verifications Performed: {verifs}\n"
+        f"Pre-detected Heuristic Flags: {', '.join(flags) if flags else 'None'}\n"
+        f"Recent Complaint Samples:\n{sample_text}\n\n"
+        "Analyze whether this citizen's behavior presents any suspicious patterns or if it represents normal civic engagement."
+    )
+
+    res_dict = None
+    latency_ms = 0
+    status = "ERROR"
+
+    for _ in range(settings.AI_MAX_RETRIES + 1):
+        res_dict, latency_ms, status = await provider.generate_json(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            schema_class=CitizenPatternAnalysisOutput,
+            timeout_seconds=settings.AI_TIMEOUT_SECONDS,
+        )
+        if status == "SUCCESS" and res_dict:
+            break
+
+    log_ai_call(db, organization_id, "analyze-suspicious-patterns", provider.model_name, status, latency_ms, len(prompt))
+
+    if res_dict:
+        try:
+            validated = CitizenPatternAnalysisOutput.model_validate(res_dict)
+            combined_flags = list(dict.fromkeys(flags + validated.suspicious_flags))
+            return GemmaPatternAnalysisResponse(
+                citizen_id=citizen.id,
+                citizen_name=citizen.full_name,
+                suspicious_flags=combined_flags,
+                risk_level=validated.risk_level,
+                summary_analysis=validated.summary_analysis,
+                recommended_action=validated.recommended_action,
+                recommended_trust_adjustment=validated.recommended_trust_adjustment,
+                recommendation_reason=validated.recommendation_reason,
+                is_ai_suggestion=True,
+            )
+        except Exception:
+            pass
+
+    # Heuristic fallback if AI service unavailable or timed out
+    has_risk = len(flags) > 0
+    return GemmaPatternAnalysisResponse(
+        citizen_id=citizen.id,
+        citizen_name=citizen.full_name,
+        suspicious_flags=flags,
+        risk_level="MEDIUM" if has_risk else "LOW",
+        summary_analysis=(
+            f"Citizen has submitted {total_rep} reports ({rej_rep} rejected) and {verifs} verifications. "
+            + ("Heuristic analysis noted potential reporting anomalies." if has_risk else "Engagement pattern is consistent with standard citizen reporting.")
+        ),
+        recommended_action="FLAG_FOR_REVIEW" if has_risk else "NO_ACTION",
+        recommended_trust_adjustment=-10 if has_risk else 0,
+        recommendation_reason=(
+            "Observed flagged patterns warrant administrative review before making score adjustments."
+            if has_risk else "Consistent participation with standard verification activity."
+        ),
+        is_ai_suggestion=True,
+    )

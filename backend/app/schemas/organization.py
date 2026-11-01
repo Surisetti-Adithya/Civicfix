@@ -33,16 +33,20 @@ class OrganizationResponse(OrganizationBase):
 class MembershipCreate(BaseModel):
     user_id: int
     role: str  # CITIZEN, STAFF, ORG_ADMIN
+    team_id: Optional[int] = None
 
 
 class MembershipUpdate(BaseModel):
-    role: str
+    role: Optional[str] = None
+    team_id: Optional[int] = None
 
 
 class MembershipResponse(BaseModel):
     id: int
     user_id: int
     organization_id: int
+    team_id: Optional[int] = None
+    team_name: Optional[str] = None
     role: str
     created_at: datetime.datetime
     user: Optional[UserResponse] = None

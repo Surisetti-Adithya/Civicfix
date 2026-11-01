@@ -99,6 +99,10 @@ class User(Base):
     home_latitude = Column(Float, nullable=True)
     home_longitude = Column(Float, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    account_status = Column(String(50), default="ACTIVE", nullable=False)  # "ACTIVE", "RESTRICTED", "BANNED"
+    status_reason = Column(Text, nullable=True)
+    status_updated_at = Column(DateTime(timezone=True), nullable=True)
+    status_updated_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     @property
@@ -129,6 +133,8 @@ class User(Base):
 
     memberships = relationship("Membership", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
+    trust_history = relationship("TrustScoreHistory", foreign_keys="[TrustScoreHistory.user_id]", back_populates="user", cascade="all, delete-orphan")
+    appeals = relationship("CitizenAppeal", foreign_keys="[CitizenAppeal.user_id]", back_populates="user", cascade="all, delete-orphan")
 
 
 class Organization(Base):
@@ -169,11 +175,13 @@ class Membership(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
     role = Column(String(50), nullable=False, default=RoleEnum.CITIZEN.value)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     user = relationship("User", back_populates="memberships")
     organization = relationship("Organization", back_populates="memberships")
+    team = relationship("Team")
 
     __table_args__ = (
         UniqueConstraint("user_id", "organization_id", name="uq_user_organization"),
@@ -260,6 +268,11 @@ class Complaint(Base):
     resolution_deadline = Column(DateTime(timezone=True), nullable=True)
     is_overdue = Column(Boolean, default=False, nullable=False)
     
+    is_staff_verified = Column(Boolean, default=False, nullable=False)
+    staff_verification_notes = Column(Text, nullable=True)
+    staff_verified_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    priority_manually_set = Column(Boolean, default=False, nullable=False)
+
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
@@ -268,6 +281,7 @@ class Complaint(Base):
     category = relationship("Category")
     assigned_team = relationship("Team", foreign_keys=[assigned_team_id])
     assigned_user = relationship("User", foreign_keys=[assigned_user_id])
+    staff_verified_by = relationship("User", foreign_keys=[staff_verified_by_id])
     
     history = relationship("ComplaintHistory", back_populates="complaint", cascade="all, delete-orphan")
     assignments = relationship("Assignment", back_populates="complaint", cascade="all, delete-orphan")
@@ -557,3 +571,42 @@ class VerificationRecord(Base):
 
     user = relationship("User")
     demo_identity = relationship("DemoIdentity")
+
+
+class TrustScoreHistory(Base):
+    __tablename__ = "trust_score_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
+    previous_score = Column(Integer, nullable=False)
+    new_score = Column(Integer, nullable=False)
+    change_amount = Column(Integer, nullable=False)
+    reason = Column(Text, nullable=False)
+    rule_name = Column(String(100), default="RULE_BASED", nullable=False)
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id], back_populates="trust_history")
+    organization = relationship("Organization")
+    actor = relationship("User", foreign_keys=[actor_id])
+
+
+class CitizenAppeal(Base):
+    __tablename__ = "citizen_appeals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    appeal_type = Column(String(50), default="RESTRICTION", nullable=False)  # "RESTRICTION", "BAN"
+    reason = Column(Text, nullable=False)
+    status = Column(String(50), default="PENDING", nullable=False)  # "PENDING", "APPROVED", "REJECTED"
+    admin_notes = Column(Text, nullable=True)
+    reviewed_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", foreign_keys=[user_id], back_populates="appeals")
+    organization = relationship("Organization")
+    reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
+

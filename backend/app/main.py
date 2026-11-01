@@ -32,6 +32,8 @@ from backend.app.api.exports import router as exports_router
 from backend.app.api.reports import router as reports_router
 from backend.app.api.notifications import router as notifications_router
 from backend.app.api.audit_logs import router as audit_logs_router
+from fastapi.responses import RedirectResponse
+from backend.app.api.trust import router as trust_router
 
 app = FastAPI(
     title="CivicFix API",
@@ -41,6 +43,10 @@ app = FastAPI(
     docs_url=f"/{settings.API_PREFIX}/docs",
     redoc_url=f"/{settings.API_PREFIX}/redoc",
 )
+
+@app.get("/docs", include_in_schema=False)
+def docs_redirect():
+    return RedirectResponse(url=f"/{settings.API_PREFIX}/docs")
 
 # Ensure database tables exist
 Base.metadata.create_all(bind=engine)
@@ -80,6 +86,7 @@ app.include_router(exports_router, prefix=f"/{settings.API_PREFIX}")
 app.include_router(reports_router, prefix=f"/{settings.API_PREFIX}")
 app.include_router(notifications_router, prefix=f"/{settings.API_PREFIX}")
 app.include_router(audit_logs_router, prefix=f"/{settings.API_PREFIX}")
+app.include_router(trust_router, prefix=f"/{settings.API_PREFIX}")
 
 
 @app.get(f"/{settings.API_PREFIX}/health")

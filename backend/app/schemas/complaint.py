@@ -63,7 +63,7 @@ class ComplaintCreate(BaseModel):
     location_text: str = Field(..., min_length=2, max_length=500)
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    base_severity: Optional[str] = "MEDIUM"
+    base_severity: Optional[str] = None
     photo_name: Optional[str] = None
 
 
@@ -72,10 +72,24 @@ class ComplaintStatusUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class UpdatePriorityRequest(BaseModel):
+    priority: str = Field(..., pattern="^(CRITICAL|HIGH|MEDIUM|LOW)$")
+    notes: Optional[str] = None
+
+
+class StaffVerificationRequest(BaseModel):
+    is_valid: bool
+    notes: str = Field(..., min_length=3, max_length=1000)
+
+
 class ComplaintAssignRequest(BaseModel):
     team_id: int
     user_id: Optional[int] = None
     notes: Optional[str] = None
+
+
+class WorkNoteRequest(BaseModel):
+    notes: str = Field(..., min_length=2, max_length=2000)
 
 
 class ComplaintReopenRequest(BaseModel):
@@ -148,11 +162,16 @@ class ComplaintBrief(BaseModel):
     response_deadline: Optional[datetime.datetime] = None
     resolution_deadline: Optional[datetime.datetime] = None
     is_overdue: bool = False
+    is_staff_verified: bool = False
+    staff_verification_notes: Optional[str] = None
+    staff_verified_by_id: Optional[int] = None
+    priority_manually_set: bool = False
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
     category: Optional[CategoryResponse] = None
     assigned_team: Optional[TeamResponse] = None
+    staff_verified_by: Optional[UserResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
 

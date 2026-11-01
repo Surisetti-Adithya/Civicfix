@@ -37,6 +37,18 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
   // Verification state
   const [verifying, setVerifying] = useState(false);
 
+  // Priority update state for Staff / Admin
+  const [editingPriority, setEditingPriority] = useState(false);
+  const [selectedPriority, setSelectedPriority] = useState('');
+  const [priorityNotes, setPriorityNotes] = useState('');
+  const [savingPriority, setSavingPriority] = useState(false);
+
+  // Staff verification state
+  const [showStaffVerifyModal, setShowStaffVerifyModal] = useState(false);
+  const [staffVerifyIsValid, setStaffVerifyIsValid] = useState(true);
+  const [staffVerifyNotes, setStaffVerifyNotes] = useState('');
+  const [submittingStaffVerify, setSubmittingStaffVerify] = useState(false);
+
   // Extra info contribution state
   const [extraInfoText, setExtraInfoText] = useState('');
   const [extraLocationText, setExtraLocationText] = useState('');
@@ -131,6 +143,54 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
       setError(err.message || 'Failed to verify report.');
     } finally {
       setVerifying(false);
+    }
+  };
+
+  const handleUpdatePriority = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPriority) return;
+    setSavingPriority(true);
+    setError('');
+    setActionSuccess('');
+    try {
+      const updated = await apiRequest<Complaint>(`/complaints/${complaintId}/priority`, {
+        method: 'PATCH',
+        body: JSON.stringify({ priority: selectedPriority, notes: priorityNotes.trim() || undefined }),
+      });
+      setComplaint(updated);
+      setEditingPriority(false);
+      setPriorityNotes('');
+      setActionSuccess(`Priority updated to ${selectedPriority} by staff.`);
+    } catch (err: any) {
+      setError(err.message || 'Failed to update priority.');
+    } finally {
+      setSavingPriority(false);
+    }
+  };
+
+  const handleStaffVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!staffVerifyNotes.trim()) return;
+    setSubmittingStaffVerify(true);
+    setError('');
+    setActionSuccess('');
+    try {
+      const updated = await apiRequest<Complaint>(`/complaints/${complaintId}/staff-verify`, {
+        method: 'POST',
+        body: JSON.stringify({ is_valid: staffVerifyIsValid, notes: staffVerifyNotes.trim() }),
+      });
+      setComplaint(updated);
+      setShowStaffVerifyModal(false);
+      setStaffVerifyNotes('');
+      setActionSuccess(
+        staffVerifyIsValid
+          ? '✓ Report verified as authentic by staff. +15 Trust Points awarded to citizen reporter!'
+          : '✕ Report deemed false/fabricated. -30 Trust Points penalty applied and report rejected.'
+      );
+    } catch (err: any) {
+      setError(err.message || 'Staff verification failed.');
+    } finally {
+      setSubmittingStaffVerify(false);
     }
   };
 
@@ -328,6 +388,8 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
 
   const isReporter = user?.id === complaint.reporter_id;
   const isStaffOrAdmin = role === 'STAFF' || role === 'ORG_ADMIN' || role === 'PLATFORM_ADMIN';
+  const isAdmin = role === 'ORG_ADMIN' || role === 'PLATFORM_ADMIN';
+  const isVerificationDone = Boolean(complaint.is_staff_verified || complaint.status === 'REJECTED' || complaint.status === 'CLOSED' || complaint.status === 'RESOLVED');
   const hasUserVerified = verification?.user_answer === 'VERIFIED_REAL' || verification?.user_answer === 'STILL_EXISTS';
   const verifiedCount = verification?.verified_count ?? 0;
 
@@ -465,13 +527,27 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ padding: '4px 10px', borderRadius: '4px', background: '#3b82f6', color: '#ffffff', fontSize: '0.8rem', fontWeight: 700 }}>
               Status: {complaint.status}
             </span>
-            <span style={{ padding: '4px 10px', borderRadius: '4px', background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '0.8rem', fontWeight: 700 }}>
-              Priority: {complaint.current_priority}
-            </span>
+
+            {/* Priority with editable staff toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ padding: '4px 10px', borderRadius: '4px', background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '0.8rem', fontWeight: 700 }}>
+                Priority: {complaint.current_priority}
+              </span>
+              {isStaffOrAdmin && (
+                <button
+                  type="button"
+                  onClick={() => { setSelectedPriority(complaint.current_priority); setEditingPriority(!editingPriority); }}
+                  style={{ padding: '4px 8px', background: '#e0e7ff', color: '#3730a3', border: '1px solid #c7d2fe', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  {editingPriority ? 'Cancel' : 'Edit Priority'}
+                </button>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={() => {
@@ -505,100 +581,221 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
           </div>
         </div>
 
-        {/* Community Verification & Trust Bar */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '1rem',
-            padding: '12px 16px',
-            background: hasUserVerified ? '#f0fdf4' : '#f8fafc',
-            border: `1px solid ${hasUserVerified ? '#86efac' : '#e2e8f0'}`,
-            borderRadius: '6px',
-            marginBottom: '1.25rem',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <ShieldCheck size={22} color={hasUserVerified ? '#16a34a' : '#2563eb'} />
+        {/* Staff Priority Edit Form */}
+        {editingPriority && (
+          <form onSubmit={handleUpdatePriority} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1.25rem', padding: '10px 14px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #cbd5e1', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.825rem', fontWeight: 600, color: '#334155' }}>Staff Priority Override:</span>
+            <select
+              value={selectedPriority}
+              onChange={(e) => setSelectedPriority(e.target.value)}
+              style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem', fontWeight: 600 }}
+            >
+              <option value="LOW">LOW</option>
+              <option value="MEDIUM">MEDIUM</option>
+              <option value="HIGH">HIGH</option>
+              <option value="CRITICAL">CRITICAL</option>
+            </select>
+            <input
+              type="text"
+              placeholder="Reason for adjusting priority..."
+              value={priorityNotes}
+              onChange={(e) => setPriorityNotes(e.target.value)}
+              style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem', flex: 1, minWidth: '180px' }}
+            />
+            <button
+              type="submit"
+              disabled={savingPriority}
+              style={{ padding: '5px 12px', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+            >
+              {savingPriority ? 'Saving...' : 'Save Priority'}
+            </button>
+          </form>
+        )}
+
+        {/* STAFF PORTAL VIEW: Field Staff Verification */}
+        {isStaffOrAdmin ? (
+          <div
+            style={{
+              padding: '12px 16px',
+              background: complaint.is_staff_verified ? '#f0fdf4' : complaint.status === 'REJECTED' ? '#fef2f2' : '#eff6ff',
+              border: `1px solid ${complaint.is_staff_verified ? '#86efac' : complaint.status === 'REJECTED' ? '#fca5a5' : '#bfdbfe'}`,
+              borderRadius: '6px',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '1rem',
+            }}
+          >
             <div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1e293b' }}>
-                {verifiedCount} Citizen{verifiedCount === 1 ? '' : 's'} Verified This Report as Authentic
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>
+                Field Staff Verification & Inspection
               </div>
-              <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                Verifying signifies trust in this issue and increases the author's Trust Level by +5 pts.
+              {complaint.is_staff_verified ? (
+                <div style={{ fontSize: '0.8rem', color: '#166534', marginTop: '2px' }}>
+                  ✓ Verified as genuine report by field staff. +15 Trust Points handed to citizen reporter.
+                  {complaint.staff_verification_notes && <span> ("{complaint.staff_verification_notes}")</span>}
+                </div>
+              ) : complaint.status === 'REJECTED' ? (
+                <div style={{ fontSize: '0.8rem', color: '#991b1b', marginTop: '2px' }}>
+                  ✕ Deemed false/fabricated report by field staff inspection. -30 Trust Points penalty applied.
+                  {complaint.staff_verification_notes && <span> ("{complaint.staff_verification_notes}")</span>}
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>
+                  Inspect on-site and verify whether this issue is genuine or false/fabricated. No community verification required from staff.
+                </div>
+              )}
+            </div>
+
+            {!complaint.is_staff_verified && complaint.status !== 'REJECTED' && (
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => { setStaffVerifyIsValid(true); setStaffVerifyNotes(''); setShowStaffVerifyModal(true); }}
+                  style={{ padding: '6px 14px', background: '#16a34a', color: '#ffffff', border: 'none', borderRadius: '4px', fontSize: '0.825rem', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  ✓ Verify as Genuine (+15 pts)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setStaffVerifyIsValid(false); setStaffVerifyNotes(''); setShowStaffVerifyModal(true); }}
+                  style={{ padding: '6px 14px', background: '#dc2626', color: '#ffffff', border: 'none', borderRadius: '4px', fontSize: '0.825rem', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  ✕ Deem False / Fabricated (-30 pts)
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* CITIZEN PORTAL VIEW: Community Verification & Trust Bar */
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '1rem',
+              padding: '12px 16px',
+              background: complaint.is_staff_verified ? '#f0fdf4' : hasUserVerified ? '#f0fdf4' : '#f8fafc',
+              border: `1px solid ${complaint.is_staff_verified || hasUserVerified ? '#86efac' : '#e2e8f0'}`,
+              borderRadius: '6px',
+              marginBottom: '1.25rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <ShieldCheck size={22} color={complaint.is_staff_verified || hasUserVerified ? '#16a34a' : '#2563eb'} />
+              <div>
+                {complaint.is_staff_verified ? (
+                  <>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#166534' }}>
+                      ✓ Verified On-Site by Municipal Staff
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#475569' }}>
+                      Report confirmed authentic by field staff. Citizen verification concluded.
+                    </div>
+                  </>
+                ) : complaint.status === 'REJECTED' ? (
+                  <>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#dc2626' }}>
+                      ✕ Closed by Staff Inspection
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#475569' }}>
+                      Report was investigated by staff and deemed invalid or fabricated.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1e293b' }}>
+                      {verifiedCount} Citizen{verifiedCount === 1 ? '' : 's'} Verified This Report
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                      Community verification elevates ticket priority and increases reporter trust level.
+                    </div>
+                  </>
+                )}
               </div>
             </div>
-          </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {hasUserVerified ? (
-              <span
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {complaint.is_staff_verified || complaint.status === 'REJECTED' ? (
+                <span style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
+                  Verification closed
+                </span>
+              ) : isReporter ? (
+                <span style={{ fontSize: '0.8rem', color: '#64748b', background: '#f1f5f9', padding: '4px 10px', borderRadius: '4px' }}>
+                  Your report (community verification open to neighbors)
+                </span>
+              ) : hasUserVerified ? (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 14px',
+                    background: '#dcfce7',
+                    color: '#15803d',
+                    border: '1px solid #86efac',
+                    borderRadius: '6px',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <CheckCircle2 size={16} /> Verified by You
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleVerify}
+                  disabled={verifying}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 16px',
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <ShieldCheck size={16} />
+                  {verifying ? 'Verifying...' : 'Verify Report (+2 pts)'}
+                </button>
+              )}
+
+              {!isVerificationDone && (
+              <button
+                type="button"
+                onClick={() => setShowExtraForm(!showExtraForm)}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
                   padding: '6px 14px',
-                  background: '#dcfce7',
-                  color: '#15803d',
-                  border: '1px solid #86efac',
-                  borderRadius: '6px',
-                  fontWeight: 600,
-                  fontSize: '0.85rem',
-                }}
-              >
-                <CheckCircle2 size={16} /> Verified by You
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={handleVerify}
-                disabled={verifying}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 16px',
-                  background: '#2563eb',
-                  color: '#ffffff',
-                  border: 'none',
+                  background: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
                   borderRadius: '6px',
                   fontWeight: 600,
                   fontSize: '0.85rem',
                   cursor: 'pointer',
+                  color: '#334155',
                 }}
               >
-                <ShieldCheck size={16} />
-                {verifying ? 'Verifying...' : 'Verify Report (+2 pts)'}
+                <PlusCircle size={16} color="#0284c7" />
+                {showExtraForm ? 'Hide Contribution' : 'Add Extra Info / Photo (+10 pts)'}
               </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setShowExtraForm(!showExtraForm)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
-                background: '#f1f5f9',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                fontWeight: 600,
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                color: '#334155',
-              }}
-            >
-              <PlusCircle size={16} color="#0284c7" />
-              {showExtraForm ? 'Hide Contribution' : 'Add Extra Info / Photo (+10 pts)'}
-            </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Extra Information Form */}
-        {showExtraForm && (
+        {showExtraForm && !isVerificationDone && (
           <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '1.25rem', marginBottom: '1.5rem' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#1e3a8a', marginBottom: '0.35rem' }}>
               Enrich this Report with Extra Information, Photos, or Updated Location
@@ -987,7 +1184,8 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
               </button>
             </form>
 
-            {/* Reassign Team Form */}
+            {/* Reassign Team Form — Admin only; staff handle team assignment in person */}
+            {isAdmin && (
             <form onSubmit={handleAssign} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <label htmlFor="assign-team" style={{ fontSize: '0.875rem', fontWeight: 600 }}>Assign Responsible Team</label>
               <select
@@ -1019,6 +1217,7 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
                 {assignSubmitting ? 'Assigning...' : 'Confirm Assignment'}
               </button>
             </form>
+            )}
           </div>
         </div>
       )}
@@ -1077,6 +1276,8 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
           </p>
         )}
 
+        {/* Evidence upload form: hidden for citizens once staff has verified */}
+        {(!isVerificationDone || isStaffOrAdmin) && (
         <form onSubmit={handleUploadEvidence} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             type="file"
@@ -1093,6 +1294,12 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
             {uploadingFile ? 'Uploading...' : 'Upload Evidence Photo (+10 pts)'}
           </button>
         </form>
+        )}
+        {isVerificationDone && !isStaffOrAdmin && (
+          <p style={{ color: '#64748b', fontSize: '0.825rem', fontStyle: 'italic', marginTop: '0.5rem' }}>
+            This report has been verified on-site by staff. Additional evidence uploads are no longer required.
+          </p>
+        )}
       </div>
 
       {/* History Timeline */}
@@ -1139,6 +1346,64 @@ export default function ComplaintDetail({ complaintId, onBack }: ComplaintDetail
           <p style={{ color: '#64748b', fontSize: '0.875rem' }}>No history records found.</p>
         )}
       </div>
+
+      {/* Staff Verification Modal */}
+      {showStaffVerifyModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '1rem' }}>
+          <div style={{ background: '#ffffff', borderRadius: '8px', maxWidth: '440px', width: '100%', padding: '1.5rem', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.15rem', fontWeight: 700, color: staffVerifyIsValid ? '#166534' : '#991b1b' }}>
+              {staffVerifyIsValid ? 'Verify Report as Genuine' : 'Deem Report as False / Fabricated'}
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem', lineHeight: 1.4 }}>
+              {staffVerifyIsValid
+                ? 'Confirms the reported issue exists on-site. Citizen reporter receives +15 trust points and community verification is concluded.'
+                : 'Marks report as fabricated/spam. Applies a -30 point trust penalty to the citizen reporter and marks the ticket REJECTED.'}
+            </p>
+
+            <form onSubmit={handleStaffVerify} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                  Inspection Findings / Determination Notes *
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder={staffVerifyIsValid ? 'e.g. Field inspection confirmed valve rupture on site.' : 'e.g. Site inspected, no water leak found; reported address is vacant lot.'}
+                  value={staffVerifyNotes}
+                  onChange={(e) => setStaffVerifyNotes(e.target.value)}
+                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowStaffVerifyModal(false)}
+                  style={{ padding: '6px 12px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.825rem', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingStaffVerify}
+                  style={{
+                    padding: '6px 14px',
+                    background: staffVerifyIsValid ? '#16a34a' : '#dc2626',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    fontSize: '0.825rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {submittingStaffVerify ? 'Submitting...' : staffVerifyIsValid ? 'Confirm Valid (+15 pts)' : 'Confirm False (-30 pts)'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

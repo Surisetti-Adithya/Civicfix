@@ -9,15 +9,18 @@ interface NavbarProps {
 export default function Navbar({ currentView, onNavigate }: NavbarProps) {
   const { user, activeOrg, role, memberships, switchOrg } = useAuth();
 
+  const isStaff = role === 'STAFF';
+  const isAdmin = role === 'ORG_ADMIN' || role === 'PLATFORM_ADMIN';
+
   const navBtnStyle = (viewName: string) => ({
     background: currentView === viewName ? '#334155' : 'transparent',
     color: '#f8fafc',
     border: 'none',
-    padding: '6px 14px',
+    padding: '6px 12px',
     borderRadius: '4px',
     cursor: 'pointer',
-    fontSize: '0.875rem',
-    fontWeight: currentView === viewName ? 600 : 500,
+    fontSize: '0.85rem',
+    fontWeight: currentView === viewName ? 700 : 500,
     transition: 'background 0.15s ease',
   });
 
@@ -25,27 +28,27 @@ export default function Navbar({ currentView, onNavigate }: NavbarProps) {
     <nav style={{
       backgroundColor: '#1e293b',
       color: '#f8fafc',
-      padding: '0.75rem 1.5rem',
+      padding: '0.65rem 1.25rem',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
       flexWrap: 'wrap',
-      gap: '1rem',
+      gap: '0.75rem',
       borderBottom: '1px solid #334155',
     }}>
-      {/* Navigation bar from left to right: CivicFix logo, Profile, Dashboard, Reports, Organization */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-        {/* 1. CivicFix Logo */}
+      {/* Brand & Main Links */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+        {/* CivicFix Logo */}
         <div
           onClick={() => onNavigate('dashboard')}
-          style={{ fontSize: '1.25rem', fontWeight: 800, cursor: 'pointer', letterSpacing: '0.05em', color: '#60a5fa' }}
+          style={{ fontSize: '1.25rem', fontWeight: 800, cursor: 'pointer', letterSpacing: '0.05em', color: '#60a5fa', marginRight: '0.5rem' }}
         >
           CivicFix
         </div>
 
-        {/* 2. Profile option (right next to CivicFix logo) */}
+        {/* Profile */}
         {user ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <button
               onClick={() => onNavigate('profile')}
               style={navBtnStyle('profile')}
@@ -64,69 +67,125 @@ export default function Navbar({ currentView, onNavigate }: NavbarProps) {
             onClick={() => onNavigate('login')}
             style={navBtnStyle('login')}
           >
-            Profile / Sign In
+            Sign In
           </button>
         )}
 
-        {/* 3. Dashboard */}
-        <button
-          onClick={() => onNavigate('dashboard')}
-          style={navBtnStyle('dashboard')}
-        >
-          Dashboard
-        </button>
+        {/* CITIZEN VIEWS */}
+        {(!user || role === 'CITIZEN') && (
+          <>
+            <button
+              onClick={() => onNavigate('dashboard')}
+              style={navBtnStyle('dashboard')}
+            >
+              Dashboard
+            </button>
+          </>
+        )}
 
-        {/* 4. Reports (Requirement 9, 10) */}
+        {/* STAFF VIEWS */}
+        {isStaff && (
+          <>
+            <button
+              onClick={() => onNavigate('staff-dashboard')}
+              style={navBtnStyle('staff-dashboard')}
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => onNavigate('staff-complaints')}
+              style={navBtnStyle('staff-complaints')}
+            >
+              Complaints
+            </button>
+            <button
+              onClick={() => onNavigate('my-assignments')}
+              style={navBtnStyle('my-assignments')}
+            >
+              My Assignments
+            </button>
+          </>
+        )}
+
+        {/* ADMIN VIEWS */}
+        {isAdmin && (
+          <>
+            <button
+              onClick={() => onNavigate('admin-dashboard')}
+              style={navBtnStyle('admin-dashboard')}
+            >
+              Admin Dashboard
+            </button>
+            <button
+              onClick={() => onNavigate('admin-complaints')}
+              style={navBtnStyle('admin-complaints')}
+            >
+              Complaints
+            </button>
+            <button
+              onClick={() => onNavigate('staff-management')}
+              style={navBtnStyle('staff-management')}
+            >
+              Staff Mgmt
+            </button>
+            <button
+              onClick={() => onNavigate('citizen-trust')}
+              style={navBtnStyle('citizen-trust')}
+            >
+              Citizen Trust
+            </button>
+            <button
+              onClick={() => onNavigate('admin-settings')}
+              style={navBtnStyle('admin-settings')}
+            >
+              Settings
+            </button>
+            <button
+              onClick={() => onNavigate('disaster-ops')}
+              style={{
+                background: currentView === 'disaster-ops' ? '#991b1b' : '#7f1d1d',
+                color: '#fef2f2',
+                border: 'none',
+                padding: '6px 12px',
+                borderRadius: '4px',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Disaster Ops
+            </button>
+          </>
+        )}
+
+        {/* Shared Reports */}
         <button
           onClick={() => onNavigate('reports')}
           style={navBtnStyle('reports')}
         >
           Reports
         </button>
-
-        {/* Staff / Admin additional options if applicable */}
-        {(role === 'STAFF' || role === 'ORG_ADMIN' || role === 'PLATFORM_ADMIN') && (
-          <button
-            onClick={() => onNavigate('staff-queue')}
-            style={navBtnStyle('staff-queue')}
-          >
-            Staff Queue
-          </button>
-        )}
-
-        {(role === 'STAFF' || role === 'ORG_ADMIN' || role === 'PLATFORM_ADMIN') && (
-          <button
-            onClick={() => onNavigate('disaster-ops')}
-            style={{
-              background: currentView === 'disaster-ops' ? '#991b1b' : '#7f1d1d',
-              color: '#fef2f2',
-              border: 'none',
-              padding: '6px 12px',
-              borderRadius: '4px',
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            Disaster Ops
-          </button>
-        )}
-
-        {(role === 'ORG_ADMIN' || role === 'PLATFORM_ADMIN') && (
-          <button
-            onClick={() => onNavigate('admin-panel')}
-            style={navBtnStyle('admin-panel')}
-          >
-            Admin
-          </button>
-        )}
       </div>
 
-      {/* 5. Organization Option on the Navigation bar (Requirement 6, 10) */}
+      {/* Organization Switcher & Current User Role */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        {user && role && (
+          <span style={{
+            fontSize: '0.72rem',
+            padding: '3px 8px',
+            borderRadius: '4px',
+            background: '#334155',
+            color: '#93c5fd',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+          }}>
+            {role.replace('_', ' ')}
+          </span>
+        )}
+
         {activeOrg && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
-            <label htmlFor="nav-org-select" style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Organization:</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+            <label htmlFor="nav-org-select" style={{ color: '#94a3b8', fontSize: '0.78rem' }}>Org:</label>
             <select
               id="nav-org-select"
               value={activeOrg.id}
@@ -135,9 +194,9 @@ export default function Navbar({ currentView, onNavigate }: NavbarProps) {
                 background: '#0f172a',
                 color: '#f8fafc',
                 border: '1px solid #475569',
-                padding: '5px 10px',
+                padding: '4px 8px',
                 borderRadius: '4px',
-                fontSize: '0.875rem',
+                fontSize: '0.825rem',
                 cursor: 'pointer',
               }}
             >

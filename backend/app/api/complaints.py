@@ -1,5 +1,6 @@
 import datetime
 import math
+import uuid
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, Path
 from sqlalchemy import case
@@ -21,11 +22,15 @@ from backend.app.models import (
     RoleEnum,
     ComplaintStatusEnum,
     Notification,
+    PriorityHistory,
 )
 from backend.app.schemas.complaint import (
     ComplaintCreate,
     ComplaintStatusUpdate,
     ComplaintAssignRequest,
+    WorkNoteRequest,
+    StaffVerificationRequest,
+    UpdatePriorityRequest,
     ComplaintReopenRequest,
     ExtraInfoRequest,
     ComplaintBrief,
@@ -40,7 +45,10 @@ from backend.app.services.complaint_workflow import (
     route_and_calculate_deadlines,
     validate_status_transition,
 )
-from backend.app.services.ai.service import check_complaint_similarity_service
+from backend.app.services.ai.service import (
+    check_complaint_similarity_service,
+    assess_complaint_priority,
+)
 
 router = APIRouter(prefix="/complaints", tags=["complaints"])
 
@@ -115,7 +123,7 @@ def build_complaint_detail(complaint: Complaint) -> ComplaintDetail:
                 )
             )
 
-    # 4. Status updates from history
+    # 4. Status updates, work notes, and priority updates from history
     if complaint.history:
         for h in complaint.history:
             if h.field == "status":
@@ -133,11 +141,112 @@ def build_complaint_detail(complaint: Complaint) -> ComplaintDetail:
                         notes=h.notes,
                     )
                 )
+            elif h.field in ("work_note", "note"):
+                entries.append(
+                    ComplaintTimelineEntry(
+                        id=f"note-{h.id}",
+                        entry_type="WORK_NOTE",
+                        timestamp=h.created_at,
+                        author_name=h.actor.full_name if h.actor else "Staff Member",
+                        author_id=h.actor_id,
+                        author_trust_level=h.actor.trust_level if h.actor else None,
+                        author_badge_title=h.actor.badge_title if h.actor else None,
+                        author_badge_tier=h.actor.badge_tier if h.actor else None,
+                        text=h.new_value or h.notes or "Work note added",
+                        notes=h.notes,
+                    )
+                )
+            elif h.field == "priority":
+                entries.append(
+                    ComplaintTimelineEntry(
+                        id=f"prio-{h.id}",
+                        entry_type="PRIORITY_UPDATE",
+                        timestamp=h.created_at,
+                        author_name=h.actor.full_name if h.actor else "System / Staff",
+                        author_id=h.actor_id,
+                        author_trust_level=h.actor.trust_level if h.actor else None,
+                        author_badge_title=h.actor.badge_title if h.actor else None,
+                        author_badge_tier=h.actor.badge_tier if h.actor else None,
+                        text=f"Priority adjusted: {h.old_value or 'None'} -> {h.new_value}",
+                        notes=h.notes,
+                    )
+                )
 
     # Sort with NEWER DATA AT THE TOP (descending by timestamp)
     entries.sort(key=lambda e: e.timestamp, reverse=True)
     detail.timeline_entries = entries
     return detail
+
+
+def recalculate_priority(complaint: Complaint, db: DBSession) -> str:
+    """
+    Dynamically recalculates complaint priority based on:
+    1. Base priority/severity assessed by AI from description.
+    2. Community and staff verifications count.
+    3. Complaint age to prevent older reports from being abandoned.
+    4. Honoring manual staff adjustments.
+    """
+    if getattr(complaint, "priority_manually_set", False):
+        return complaint.current_priority
+
+    priority_order = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+    base_idx = priority_order.index(complaint.base_severity) if complaint.base_severity in priority_order else 1
+    escalation_steps = 0
+
+    # 1. Community verification count boost
+    verifications = getattr(complaint, "verifications", [])
+    verified_count = sum(1 for v in verifications if v.answer in ("STILL_EXISTS", "VERIFIED_REAL", "CANNOT_REPRODUCE"))
+    if verified_count >= 5:
+        escalation_steps += 2
+    elif verified_count >= 2:
+        escalation_steps += 1
+
+    # 2. Age-based escalation (to avoid older complaints being abandoned)
+    created_at = complaint.created_at
+    if created_at:
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=datetime.timezone.utc)
+        age_hours = (datetime.datetime.now(datetime.timezone.utc) - created_at).total_seconds() / 3600.0
+        if age_hours >= 120:  # > 5 days
+            escalation_steps += 2
+        elif age_hours >= 48:  # > 2 days
+            escalation_steps += 1
+
+    # Also check if past resolution deadline
+    if complaint.target_resolution_at:
+        t_res = complaint.target_resolution_at
+        if t_res.tzinfo is None:
+            t_res = t_res.replace(tzinfo=datetime.timezone.utc)
+        if datetime.datetime.now(datetime.timezone.utc) > t_res:
+            escalation_steps = max(escalation_steps, 2)
+
+    new_idx = min(base_idx + escalation_steps, len(priority_order) - 1)
+    new_priority = priority_order[new_idx]
+
+    if new_priority != complaint.current_priority:
+        prev = complaint.current_priority
+        complaint.current_priority = new_priority
+        db.add(
+            PriorityHistory(
+                complaint_id=complaint.id,
+                previous_priority=prev,
+                new_priority=new_priority,
+                reason=f"Priority elevated dynamically based on verifications ({verified_count}) and report age.",
+                method="DYNAMIC_VERIFICATION_AGE_SCALING",
+                idempotency_key=f"dyn-prio-{complaint.id}-{new_priority}-{uuid.uuid4().hex}",
+            )
+        )
+        log_complaint_history(
+            db=db,
+            complaint_id=complaint.id,
+            field="priority",
+            old_value=prev,
+            new_value=new_priority,
+            notes="Dynamic priority elevation based on verifications and ticket age.",
+        )
+        db.flush()
+
+    return complaint.current_priority
 
 
 @router.post("", response_model=ComplaintDetail, status_code=201)
@@ -255,6 +364,15 @@ async def create_complaint(
             return detail
 
     ref_num = generate_reference_number(db)
+
+    # Evaluate initial priority using Gemma AI / NLP hazard detection if not manually set
+    cat_obj = db.query(Category).filter(Category.id == payload.category_id).first() if payload.category_id else None
+    assessed_priority = assess_complaint_priority(
+        description=payload.description.strip(),
+        category_name=cat_obj.name if cat_obj else None,
+    )
+    initial_priority = payload.base_severity.upper() if payload.base_severity else assessed_priority
+
     complaint = Complaint(
         public_reference_number=ref_num,
         organization_id=ctx.organization_id,
@@ -266,8 +384,9 @@ async def create_complaint(
         latitude=payload.latitude,
         longitude=payload.longitude,
         status=ComplaintStatusEnum.SUBMITTED.value,
-        base_severity=payload.base_severity.upper() if payload.base_severity else "MEDIUM",
-        current_priority=payload.base_severity.upper() if payload.base_severity else "MEDIUM",
+        base_severity=initial_priority,
+        current_priority=initial_priority,
+        priority_manually_set=bool(payload.base_severity),
     )
 
     # Apply routing and calculate targets
@@ -582,6 +701,14 @@ def add_extra_info(
             status_code=404,
         )
 
+    # If verified on-site by staff, citizens no longer need or are allowed to upload additional contributions
+    if getattr(complaint, "is_staff_verified", False) and ctx.role == RoleEnum.CITIZEN.value:
+        raise CivicFixException(
+            code="VERIFICATION_CLOSED",
+            message="This complaint has already been verified on-site by staff. Additional contributions are closed.",
+            status_code=400,
+        )
+
     # If updated location given, update complaint location & coordinates
     if payload.updated_location:
         complaint.location_text = payload.updated_location.strip()
@@ -623,6 +750,179 @@ def add_extra_info(
         ctx.user.trust_level = (ctx.user.trust_level or 50) + 10
     else:
         ctx.user.trust_level = (ctx.user.trust_level or 50) + 10
+
+    db.commit()
+    db.refresh(complaint)
+    return build_complaint_detail(complaint)
+
+
+@router.post("/{complaint_id}/notes", response_model=ComplaintDetail)
+def add_complaint_work_note(
+    complaint_id: int,
+    payload: WorkNoteRequest,
+    db: DBSession = Depends(get_db),
+    ctx: ActiveOrgContext = Depends(require_role([RoleEnum.STAFF, RoleEnum.ORG_ADMIN])),
+):
+    complaint = (
+        db.query(Complaint)
+        .filter(Complaint.id == complaint_id, Complaint.organization_id == ctx.organization_id)
+        .first()
+    )
+    if not complaint:
+        raise CivicFixException(
+            code="COMPLAINT_NOT_FOUND",
+            message="Complaint not found.",
+            status_code=404,
+        )
+
+    log_complaint_history(
+        db=db,
+        complaint_id=complaint.id,
+        actor_id=ctx.user.id,
+        field="work_note",
+        old_value=None,
+        new_value=payload.notes.strip(),
+        notes=payload.notes.strip(),
+    )
+    complaint.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    db.commit()
+    db.refresh(complaint)
+    return build_complaint_detail(complaint)
+
+
+@router.patch("/{complaint_id}/priority", response_model=ComplaintDetail)
+def update_complaint_priority(
+    complaint_id: int,
+    payload: UpdatePriorityRequest,
+    db: DBSession = Depends(get_db),
+    ctx: ActiveOrgContext = Depends(require_role([RoleEnum.STAFF, RoleEnum.ORG_ADMIN])),
+):
+    complaint = (
+        db.query(Complaint)
+        .filter(Complaint.id == complaint_id, Complaint.organization_id == ctx.organization_id)
+        .first()
+    )
+    if not complaint:
+        raise CivicFixException(
+            code="COMPLAINT_NOT_FOUND",
+            message="Complaint not found.",
+            status_code=404,
+        )
+
+    old_priority = complaint.current_priority
+    new_priority = payload.priority.upper()
+    if new_priority not in ("LOW", "MEDIUM", "HIGH", "CRITICAL"):
+        raise CivicFixException(
+            code="INVALID_PRIORITY",
+            message="Priority must be LOW, MEDIUM, HIGH, or CRITICAL.",
+            status_code=400,
+        )
+
+    complaint.current_priority = new_priority
+    complaint.priority_manually_set = True
+    complaint.updated_at = datetime.datetime.now(datetime.timezone.utc)
+
+    db.add(
+        PriorityHistory(
+            complaint_id=complaint.id,
+            previous_priority=old_priority,
+            new_priority=new_priority,
+            reason=payload.notes or "Priority manually adjusted by staff/admin.",
+            method="MANUAL_STAFF_OVERRIDE",
+            idempotency_key=f"manual-prio-{complaint.id}-{new_priority}-{uuid.uuid4().hex}",
+        )
+    )
+
+    log_complaint_history(
+        db=db,
+        complaint_id=complaint.id,
+        actor_id=ctx.user.id,
+        field="priority",
+        old_value=old_priority,
+        new_value=new_priority,
+        notes=payload.notes or "Manual priority adjustment",
+    )
+
+    db.commit()
+    db.refresh(complaint)
+    return build_complaint_detail(complaint)
+
+
+@router.post("/{complaint_id}/staff-verify", response_model=ComplaintDetail)
+def staff_verify_complaint(
+    complaint_id: int,
+    payload: StaffVerificationRequest,
+    db: DBSession = Depends(get_db),
+    ctx: ActiveOrgContext = Depends(require_role([RoleEnum.STAFF, RoleEnum.ORG_ADMIN])),
+):
+    complaint = (
+        db.query(Complaint)
+        .filter(Complaint.id == complaint_id, Complaint.organization_id == ctx.organization_id)
+        .first()
+    )
+    if not complaint:
+        raise CivicFixException(
+            code="COMPLAINT_NOT_FOUND",
+            message="Complaint not found.",
+            status_code=404,
+        )
+
+    complaint.is_staff_verified = True
+    complaint.staff_verification_notes = payload.notes.strip()
+    complaint.staff_verified_by_id = ctx.user.id
+    complaint.updated_at = datetime.datetime.now(datetime.timezone.utc)
+
+    reporter = complaint.reporter
+
+    if payload.is_valid:
+        # Staff member verifies as valid report -> Hand out trust points (+15 pts)
+        if reporter:
+            reporter.trust_level = min((reporter.trust_level or 50) + 15, 100)
+
+        log_complaint_history(
+            db=db,
+            complaint_id=complaint.id,
+            actor_id=ctx.user.id,
+            field="staff_verification",
+            old_value=None,
+            new_value="VERIFIED_VALID",
+            notes=f"Staff on-site verification: Genuine issue. {payload.notes.strip()}",
+        )
+
+        db.add(
+            Notification(
+                user_id=complaint.reporter_id,
+                title="Report Verified On-Site (+15 pts)",
+                message=f"Staff verified report #{complaint.public_reference_number} as authentic on-site. +15 Trust Points awarded!",
+                link=f"/complaints/{complaint.id}",
+            )
+        )
+        if complaint.status in (ComplaintStatusEnum.SUBMITTED.value, ComplaintStatusEnum.ASSIGNED.value):
+            complaint.status = ComplaintStatusEnum.IN_PROGRESS.value
+    else:
+        # Report deemed false / fabricated -> Penalize citizen reporter (-30 pts)
+        if reporter:
+            reporter.trust_level = max((reporter.trust_level or 50) - 30, 0)
+
+        log_complaint_history(
+            db=db,
+            complaint_id=complaint.id,
+            actor_id=ctx.user.id,
+            field="staff_verification",
+            old_value=None,
+            new_value="DEEMED_FALSE",
+            notes=f"Staff on-site verification: Fabricated/false report. {payload.notes.strip()}",
+        )
+
+        db.add(
+            Notification(
+                user_id=complaint.reporter_id,
+                title="Report Deemed False (-30 pts penalty)",
+                message=f"Staff inspected report #{complaint.public_reference_number} and determined it was false/fabricated. -30 Trust Points penalty applied.",
+                link=f"/complaints/{complaint.id}",
+            )
+        )
+        complaint.status = ComplaintStatusEnum.REJECTED.value
 
     db.commit()
     db.refresh(complaint)

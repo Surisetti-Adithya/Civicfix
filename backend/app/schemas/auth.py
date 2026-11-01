@@ -35,6 +35,8 @@ class UserLogin(BaseModel):
 class UserResponse(UserBase):
     id: int
     is_active: bool
+    account_status: str = "ACTIVE"
+    status_reason: Optional[str] = None
     trust_level: int = 50
     badge_title: Optional[str] = "Active Contributor"
     badge_tier: Optional[str] = "BRONZE"
@@ -56,6 +58,8 @@ class OrganizationBrief(BaseModel):
 class MembershipBrief(BaseModel):
     id: int
     organization_id: int
+    team_id: Optional[int] = None
+    team_name: Optional[str] = None
     role: str
     organization: OrganizationBrief
 

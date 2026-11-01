@@ -46,6 +46,17 @@ def community_setup(client):
         },
     ).json()
 
+    citizen3 = client.post(
+        "/api/auth/register",
+        json={
+            "email": "citizenC@muni.gov",
+            "password": "Password123!",
+            "full_name": "Citizen Gamma",
+            "organization_id": org_id,
+            "role": "CITIZEN",
+        },
+    ).json()
+
     # Create 2 complaints
     c1 = client.post(
         "/api/complaints",
@@ -64,6 +75,7 @@ def community_setup(client):
         "admin_token": token,
         "citizen1_token": citizen1["token"],
         "citizen2_token": citizen2["token"],
+        "citizen3_token": citizen3["token"],
         "c1_id": c1["id"],
         "c2_id": c2["id"],
     }
@@ -75,12 +87,22 @@ def test_community_verification_lifecycle(client, community_setup):
 
     h1 = {"Authorization": f"Bearer {community_setup['citizen1_token']}", "X-Organization-Id": str(org_id)}
     h2 = {"Authorization": f"Bearer {community_setup['citizen2_token']}", "X-Organization-Id": str(org_id)}
+    h3 = {"Authorization": f"Bearer {community_setup['citizen3_token']}", "X-Organization-Id": str(org_id)}
 
-    # Citizen 1 marks STILL_EXISTS
+    # Citizen 1 (the reporter) CANNOT verify their own submission
+    v_own = client.post(
+        f"/api/complaints/{c1_id}/verifications",
+        json={"answer": "STILL_EXISTS", "notes": "I reported this"},
+        headers=h1,
+    )
+    assert v_own.status_code == 400
+    assert v_own.json()["code"] == "CANNOT_VERIFY_OWN_REPORT"
+
+    # Neighbor Citizen 2 marks STILL_EXISTS
     v1 = client.post(
         f"/api/complaints/{c1_id}/verifications",
         json={"answer": "STILL_EXISTS", "notes": "Water still pooling"},
-        headers=h1,
+        headers=h2,
     )
     assert v1.status_code == 201
     data1 = v1.json()
@@ -88,11 +110,11 @@ def test_community_verification_lifecycle(client, community_setup):
     assert data1["counts"]["STILL_EXISTS"] == 1
     assert data1["user_answer"] == "STILL_EXISTS"
 
-    # Citizen 2 marks APPEARS_RESOLVED
+    # Neighbor Citizen 3 marks APPEARS_RESOLVED
     v2 = client.post(
         f"/api/complaints/{c1_id}/verifications",
         json={"answer": "APPEARS_RESOLVED"},
-        headers=h2,
+        headers=h3,
     )
     assert v2.status_code == 201
     data2 = v2.json()
@@ -100,11 +122,11 @@ def test_community_verification_lifecycle(client, community_setup):
     assert data2["counts"]["STILL_EXISTS"] == 1
     assert data2["counts"]["APPEARS_RESOLVED"] == 1
 
-    # Citizen 1 changes mind to NEEDS_REVIEW
+    # Citizen 2 changes mind to NEEDS_REVIEW
     v3 = client.post(
         f"/api/complaints/{c1_id}/verifications",
         json={"answer": "NEEDS_REVIEW"},
-        headers=h1,
+        headers=h2,
     )
     assert v3.status_code == 201
     data3 = v3.json()

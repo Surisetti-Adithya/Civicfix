@@ -34,6 +34,14 @@ async def upload_evidence(
             status_code=404,
         )
 
+    # If verified on-site by staff, citizens no longer need or are allowed to upload additional evidence
+    if getattr(complaint, "is_staff_verified", False) and ctx.role == RoleEnum.CITIZEN.value:
+        raise CivicFixException(
+            code="VERIFICATION_CLOSED",
+            message="This complaint has already been verified on-site by staff. No additional photos or evidence are required.",
+            status_code=400,
+        )
+
     # Permission check: citizens can contribute extra evidence to any complaint in their organization
     if complaint.organization_id != ctx.organization_id:
         raise CivicFixException(

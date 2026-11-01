@@ -40,6 +40,8 @@ def build_session_response(db: DBSession, session_record: Session, user: User) -
                 MembershipBrief(
                     id=m.id,
                     organization_id=m.organization_id,
+                    team_id=m.team_id,
+                    team_name=m.team.name if m.team else None,
                     role=m.role,
                     organization=OrganizationBrief.model_validate(org),
                 )

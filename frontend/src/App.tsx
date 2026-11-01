@@ -8,13 +8,25 @@ import NewComplaint from './pages/NewComplaint';
 import ComplaintList from './pages/ComplaintList';
 import ComplaintDetail from './pages/ComplaintDetail';
 import DisasterOps from './pages/DisasterOps';
-import AdminPanel from './pages/AdminPanel';
 import Reports from './pages/Reports';
+
+// Staff Portal Pages
+import StaffDashboard from './pages/StaffDashboard';
+import StaffComplaints from './pages/StaffComplaints';
+import MyAssignments from './pages/MyAssignments';
+
+// Admin Portal Pages
+import AdminDashboard from './pages/AdminDashboard';
+import AdminComplaints from './pages/AdminComplaints';
+import StaffManagement from './pages/StaffManagement';
+import CitizenTrustManagement from './pages/CitizenTrustManagement';
+import AdminSettings from './pages/AdminSettings';
 
 function MainContent() {
   const { user, role, loading } = useAuth();
   const [currentView, setCurrentView] = useState('dashboard');
   const [selectedComplaintId, setSelectedComplaintId] = useState<number | null>(null);
+  const [staffFilter, setStaffFilter] = useState<{ status?: string; overdue?: boolean; assignedToMe?: boolean } | undefined>();
 
   if (loading) {
     return (
@@ -29,6 +41,18 @@ function MainContent() {
     setCurrentView('complaint-detail');
   };
 
+  const handleStaffNavigateToComplaints = (filter?: { status?: string; overdue?: boolean; assignedToMe?: boolean }) => {
+    if (filter?.assignedToMe) {
+      setCurrentView('my-assignments');
+    } else {
+      setStaffFilter(filter);
+      setCurrentView('staff-complaints');
+    }
+  };
+
+  const isAdmin = role === 'ORG_ADMIN' || role === 'PLATFORM_ADMIN';
+  const isStaff = role === 'STAFF';
+
   return (
     <div>
       <Navbar currentView={currentView} onNavigate={(v) => { setCurrentView(v); setSelectedComplaintId(null); }} />
@@ -37,7 +61,11 @@ function MainContent() {
         {currentView === 'login' && (
           <Login
             onRegisterClick={() => setCurrentView('register')}
-            onSuccess={() => setCurrentView('dashboard')}
+            onSuccess={() => {
+              if (isAdmin) setCurrentView('admin-dashboard');
+              else if (isStaff) setCurrentView('staff-dashboard');
+              else setCurrentView('dashboard');
+            }}
           />
         )}
 
@@ -48,47 +76,99 @@ function MainContent() {
           />
         )}
 
-        {/* Profile View (Requirements 3, 7, 11) */}
+        {/* Profile View (Supports viewing/updating info, and citizen appeals) */}
         {currentView === 'profile' && (
           <Profile onSelectComplaint={navigateToComplaint} />
         )}
 
+        {/* New Report View */}
         {currentView === 'new-complaint' && (
           <NewComplaint
             onSuccess={(id) => navigateToComplaint(id)}
-            onCancel={() => setCurrentView('dashboard')}
+            onCancel={() => {
+              if (isAdmin) setCurrentView('admin-dashboard');
+              else if (isStaff) setCurrentView('staff-dashboard');
+              else setCurrentView('dashboard');
+            }}
           />
         )}
 
+        {/* Detail View */}
         {currentView === 'complaint-detail' && selectedComplaintId && (
           <ComplaintDetail
             complaintId={selectedComplaintId}
-            onBack={() => setCurrentView('dashboard')}
+            onBack={() => {
+              if (isAdmin) setCurrentView('admin-complaints');
+              else if (isStaff) setCurrentView('staff-complaints');
+              else setCurrentView('dashboard');
+            }}
           />
         )}
 
-        {currentView === 'staff-queue' && (
-          <ComplaintList
-            title="Staff Operational Queue"
-            portal="staff"
+        {/* ================= STAFF PORTAL VIEWS ================= */}
+        {currentView === 'staff-dashboard' && (
+          <StaffDashboard
+            onNavigateToComplaints={handleStaffNavigateToComplaints}
             onSelectComplaint={navigateToComplaint}
           />
         )}
 
+        {currentView === 'staff-complaints' && (
+          <StaffComplaints
+            onSelectComplaint={navigateToComplaint}
+            initialFilter={staffFilter}
+          />
+        )}
+
+        {currentView === 'my-assignments' && (
+          <MyAssignments
+            onSelectComplaint={navigateToComplaint}
+          />
+        )}
+
+        {/* ================= ADMIN PORTAL VIEWS ================= */}
+        {currentView === 'admin-dashboard' && (
+          <AdminDashboard
+            onNavigate={(v) => setCurrentView(v)}
+            onSelectComplaint={navigateToComplaint}
+          />
+        )}
+
+        {currentView === 'admin-complaints' && (
+          <AdminComplaints
+            onSelectComplaint={navigateToComplaint}
+          />
+        )}
+
+        {currentView === 'staff-management' && (
+          <StaffManagement />
+        )}
+
+        {currentView === 'citizen-trust' && (
+          <CitizenTrustManagement />
+        )}
+
+        {currentView === 'admin-settings' && (
+          <AdminSettings />
+        )}
+
+        {/* Disaster Ops (Admin only) */}
         {currentView === 'disaster-ops' && (
-          <DisasterOps onSelectComplaint={navigateToComplaint} />
+          isAdmin ? (
+            <DisasterOps onSelectComplaint={navigateToComplaint} />
+          ) : (
+            <div style={{ background: '#fef2f2', border: '1px solid #f87171', color: '#991b1b', padding: '1.5rem', borderRadius: '8px', textAlign: 'center' }}>
+              <strong>Access Denied:</strong> Disaster Operations is accessible only to authorized administrators.
+            </div>
+          )
         )}
 
-        {currentView === 'admin-panel' && (
-          <AdminPanel />
-        )}
-
-        {/* Reports View (Requirements 9, 10, 12) */}
+        {/* Reports / Analytics View */}
         {(currentView === 'reports' || currentView === 'public-metrics') && (
           <Reports />
         )}
 
-        {/* Dashboard View (Requirements 8, 10) */}
+        {/* Default Dashboard */}
         {currentView === 'dashboard' && (
           <div>
             {!user ? (
@@ -112,17 +192,25 @@ function MainContent() {
                   </button>
                 </div>
               </div>
+            ) : isStaff ? (
+              <StaffDashboard
+                onNavigateToComplaints={handleStaffNavigateToComplaints}
+                onSelectComplaint={navigateToComplaint}
+              />
+            ) : isAdmin ? (
+              <AdminDashboard
+                onNavigate={(v) => setCurrentView(v)}
+                onSelectComplaint={navigateToComplaint}
+              />
             ) : (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
                   <div>
                     <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
-                      {role === 'CITIZEN' ? 'Nearby Reports' : 'Organization Workspace'}
+                      Nearby Reports
                     </h1>
                     <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '4px' }}>
-                      {role === 'CITIZEN'
-                        ? 'Community and nearby issues reported in your neighborhood.'
-                        : 'Review reports, route to teams, and update statuses.'}
+                      Community and nearby issues reported in your neighborhood.
                     </p>
                   </div>
 
@@ -134,11 +222,10 @@ function MainContent() {
                   </button>
                 </div>
 
-                {/* Requirement 8: Nearby Reports section on Dashboard */}
                 <ComplaintList
-                  title={role === 'CITIZEN' ? 'Nearby Reports' : 'All Open Reports'}
-                  scope={role === 'CITIZEN' ? 'nearby' : undefined}
-                  portal={role === 'CITIZEN' ? 'citizen' : 'staff'}
+                  title="Nearby Reports"
+                  scope="nearby"
+                  portal="citizen"
                   onSelectComplaint={navigateToComplaint}
                 />
               </div>

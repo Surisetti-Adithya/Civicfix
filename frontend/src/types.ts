@@ -17,6 +17,8 @@ export interface User {
   badge_tier?: string;
   home_latitude?: number | null;
   home_longitude?: number | null;
+  account_status?: 'ACTIVE' | 'RESTRICTED' | 'BANNED';
+  status_reason?: string | null;
 }
 
 export interface VerificationSummary {
@@ -42,8 +44,12 @@ export interface Membership {
   user_id: number;
   organization_id: number;
   role: 'CITIZEN' | 'STAFF' | 'ORG_ADMIN' | 'PLATFORM_ADMIN';
+  team_id?: number | null;
+  team_name?: string | null;
   created_at: string;
   organization?: Organization;
+  team?: Team | null;
+  user?: User;
 }
 
 export interface SessionResponse {
@@ -164,6 +170,11 @@ export interface Complaint {
   response_deadline?: string | null;
   resolution_deadline?: string | null;
   is_overdue: boolean;
+  is_staff_verified?: boolean;
+  staff_verification_notes?: string | null;
+  staff_verified_by_id?: number | null;
+  priority_manually_set?: boolean;
+  staff_verified_by?: User | null;
   created_at: string;
   updated_at: string;
   description_original?: string;
@@ -181,3 +192,126 @@ export interface Complaint {
   merged_into_id?: number | null;
   merge_reason?: string | null;
 }
+
+export interface RecentActivityItem {
+  id: number;
+  complaint_id: number;
+  public_reference_number: string;
+  location_text?: string;
+  field: string;
+  old_value?: string | null;
+  new_value?: string | null;
+  notes?: string | null;
+  actor_id?: number | null;
+  actor_name: string;
+  created_at: string;
+}
+
+export interface StaffDashboardData {
+  open_complaints_count: number;
+  assigned_complaints_count: number;
+  overdue_complaints_count: number;
+  recent_activity: RecentActivityItem[];
+}
+
+export interface TrustScoreHistoryItem {
+  id: number;
+  user_id: number;
+  organization_id?: number | null;
+  previous_score: number;
+  new_score: number;
+  change_amount: number;
+  reason: string;
+  rule_name: string;
+  actor_id?: number | null;
+  actor_name?: string | null;
+  created_at: string;
+}
+
+export interface CitizenAppealItem {
+  id: number;
+  user_id: number;
+  organization_id: number;
+  appeal_type: string;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  admin_notes?: string | null;
+  reviewed_by_id?: number | null;
+  reviewed_by_name?: string | null;
+  created_at: string;
+  reviewed_at?: string | null;
+}
+
+export interface CitizenSummary {
+  user_id: number;
+  full_name: string;
+  email: string;
+  phone_number?: string | null;
+  permanent_location?: string | null;
+  trust_level: number;
+  badge_title: string;
+  badge_tier: string;
+  account_status: 'ACTIVE' | 'RESTRICTED' | 'BANNED';
+  status_reason?: string | null;
+  status_updated_at?: string | null;
+  report_count: number;
+  verification_count: number;
+  pending_appeals_count: number;
+  suspicious_flags: string[];
+}
+
+export interface ComplaintBriefTrust {
+  id: number;
+  public_reference_number: string;
+  description: string;
+  category_name?: string | null;
+  location_text: string;
+  status: string;
+  current_priority: string;
+  is_overdue: boolean;
+  is_staff_verified?: boolean;
+  staff_verification_notes?: string | null;
+  staff_verified_by_id?: number | null;
+  priority_manually_set?: boolean;
+  staff_verified_by?: User | null;
+  created_at: string;
+}
+
+export interface VerificationBriefTrust {
+  id: number;
+  complaint_id: number;
+  complaint_reference: string;
+  answer: string;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface CitizenDetail extends CitizenSummary {
+  status_updated_by_name?: string | null;
+  reports: ComplaintBriefTrust[];
+  verifications: VerificationBriefTrust[];
+  trust_history: TrustScoreHistoryItem[];
+  appeals: CitizenAppealItem[];
+}
+
+export interface GemmaPatternAnalysisResponse {
+  citizen_id: number;
+  citizen_name: string;
+  suspicious_flags: string[];
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
+  summary_analysis: string;
+  recommended_action: 'NO_ACTION' | 'FLAG_FOR_REVIEW' | 'ADJUST_TRUST_SCORE';
+  recommended_trust_adjustment: number;
+  recommendation_reason: string;
+  is_ai_suggestion: boolean;
+  disclaimer: string;
+}
+
+export interface TrustRulesConfig {
+  report_quality_bonus: number;
+  duplicate_extension_bonus: number;
+  verification_outcome_bonus: number;
+  confirmed_abuse_penalty: number;
+  unresolved_unverified_penalty: number;
+}
+

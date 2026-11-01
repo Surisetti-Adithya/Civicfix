@@ -100,4 +100,24 @@ class FakeAiProvider(AiProvider):
             }
             return data, int((time.perf_counter() - start) * 1000), "SUCCESS"
 
+        if schema_name == "CitizenPatternAnalysisOutput":
+            has_burst = "burst" in prompt.lower() or "suspicious" in prompt.lower() or "rejection" in prompt.lower()
+            data = {
+                "suspicious_flags": ["Rapid burst submissions", "Elevated rejection rate"] if has_burst else [],
+                "risk_level": "MEDIUM" if has_burst else "LOW",
+                "summary_analysis": (
+                    "Observed repeated submissions in a short timeframe with multiple rejected reports. Recommended for staff review."
+                    if has_burst
+                    else "Normal civic engagement pattern observed with reliable reports and regular verification participation."
+                ),
+                "recommended_action": "FLAG_FOR_REVIEW" if has_burst else "NO_ACTION",
+                "recommended_trust_adjustment": -10 if has_burst else 0,
+                "recommendation_reason": (
+                    "Potentially repetitive duplicate reporting may dilute operational focus. Advisory recommendation only."
+                    if has_burst
+                    else "Citizen report history reflects authentic engagement."
+                ),
+            }
+            return data, int((time.perf_counter() - start) * 1000), "SUCCESS"
+
         return None, int((time.perf_counter() - start) * 1000), "NO_MOCK_AVAILABLE"

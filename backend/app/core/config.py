@@ -16,7 +16,9 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:8000",
     ]
-    UPLOAD_DIR: str = "/home/alumina/civic/uploads"
+    UPLOAD_DIR: str = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../../../uploads")
+    )
     MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
     ALLOWED_UPLOAD_EXTENSIONS: List[str] = [".jpg", ".jpeg", ".png", ".pdf", ".txt"]
     ALLOWED_UPLOAD_MIME_TYPES: List[str] = [

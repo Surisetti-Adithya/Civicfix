@@ -17,7 +17,6 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
   const [locationText, setLocationText] = useState('');
   const [latitude, setLatitude] = useState<number | null>(user?.home_latitude ?? 12.9716);
   const [longitude, setLongitude] = useState<number | null>(user?.home_longitude ?? 77.5946);
-  const [baseSeverity, setBaseSeverity] = useState('MEDIUM');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
@@ -115,7 +114,6 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
         location_text: locationText.trim(),
         latitude: latitude,
         longitude: longitude,
-        base_severity: baseSeverity,
         photo_name: photoFile ? photoFile.name : undefined,
       };
 
@@ -309,21 +307,13 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
           </span>
         </div>
 
-        <div>
-          <label htmlFor="severity" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 600 }}>
-            Initial Severity
-          </label>
-          <select
-            id="severity"
-            value={baseSeverity}
-            onChange={(e) => setBaseSeverity(e.target.value)}
-            style={{ width: '100%', padding: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.875rem' }}
-          >
-            <option value="LOW">Low (Cosmetic, minor inconvenience)</option>
-            <option value="MEDIUM">Medium (Normal civic issue)</option>
-            <option value="HIGH">High (Active disruption, hazardous conditions)</option>
-            <option value="CRITICAL">Critical (Immediate safety risk)</option>
-          </select>
+        <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.85rem' }}>
+          <strong style={{ color: '#0f172a', display: 'block', marginBottom: '2px' }}>
+            Automated Priority Evaluation (Gemma AI)
+          </strong>
+          <span style={{ color: '#64748b', fontSize: '0.8rem', lineHeight: 1.4, display: 'block' }}>
+            Priority is automatically determined from your description's safety hazards. It dynamically escalates as neighbors verify the issue and as the report ages to prevent older reports from being neglected.
+          </span>
         </div>
 
         <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>

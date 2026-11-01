@@ -85,6 +85,22 @@ def submit_verification(
             status_code=404,
         )
 
+    # 1. Citizen cannot verify their own report
+    if complaint.reporter_id == ctx.user.id:
+        raise CivicFixException(
+            code="CANNOT_VERIFY_OWN_REPORT",
+            message="You cannot verify your own submitted report.",
+            status_code=400,
+        )
+
+    # 2. If staff has already verified, citizen verification is closed
+    if getattr(complaint, "is_staff_verified", False) or complaint.status in ("RESOLVED", "REJECTED", "CLOSED"):
+        raise CivicFixException(
+            code="VERIFICATION_CLOSED",
+            message="This report has already been verified or resolved by municipal staff. Citizen verification is closed.",
+            status_code=400,
+        )
+
     valid_answers = [a.value for a in VerificationAnswerEnum]
     if payload.answer not in valid_answers:
         raise CivicFixException(
@@ -121,5 +137,11 @@ def submit_verification(
             ctx.user.trust_level = (ctx.user.trust_level or 50) + 2
 
     db.commit()
+
+    try:
+        from backend.app.api.complaints import recalculate_priority
+        recalculate_priority(complaint, db)
+    except Exception:
+        pass
 
     return get_verification_summary(complaint_id=complaint_id, db=db, ctx=ctx)
