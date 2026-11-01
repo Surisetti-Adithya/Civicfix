@@ -49,9 +49,17 @@ class FakeAiProvider(AiProvider):
         schema_name = schema_class.__name__
 
         if schema_name == "ImproveDescriptionOutput":
-            cleaned = prompt.replace("Original complaint text:\n", "").strip()
+            # Extract the original description from the prompt (supports both prompt formats)
+            cleaned = prompt
+            for prefix in [
+                "Original complaint (rewrite this clearly for field staff review):\n",
+                "Original complaint text:\n",
+            ]:
+                cleaned = cleaned.replace(prefix, "")
+            # Strip any trailing instructions
+            cleaned = cleaned.split("\n\nProvide only")[0].strip()
             data = {
-                "improved_description": f"Observed issue: {cleaned}",
+                "improved_description": f"Reported civic issue requiring attention: {cleaned}",
                 "explanation": "Clarified sentence structure while preserving user intent.",
             }
             if self._mode == "hallucination":
@@ -78,6 +86,15 @@ class FakeAiProvider(AiProvider):
                         "reason": "Both reports cite water accumulation at identical junction.",
                         "confidence": "HIGH",
                     }
+                ]
+            }
+            return data, int((time.perf_counter() - start) * 1000), "SUCCESS"
+
+        if schema_name == "FollowUpQuestionsOutput":
+            data = {
+                "questions": [
+                    "How long has this issue been present?",
+                    "Can you describe the exact spot more precisely?",
                 ]
             }
             return data, int((time.perf_counter() - start) * 1000), "SUCCESS"

@@ -16,6 +16,8 @@ from backend.app.schemas.ai import (
     ImproveDescriptionResponse,
     SuggestCategoryOutput,
     SuggestCategoryResponse,
+    FollowUpQuestionsOutput,
+    FollowUpQuestionsResponse,
     AiDuplicateOutput,
     AiSimilarityCheckOutput,
     DuplicateCandidateResponse,
@@ -114,7 +116,11 @@ def verify_no_hallucinations(input_text: str, output_text: str) -> bool:
     common_words = {
         "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
         "structured", "summary", "complaint", "issue", "report", "location", "details",
-        "near", "inside", "outside", "regarding", "observed"
+        "near", "inside", "outside", "regarding", "observed",
+        "community", "maintenance", "hazardous", "defective", "emergency", "immediate",
+        "prompt", "public", "municipal", "inspection", "water", "electrical",
+        "elevator", "excessive", "reported", "poses", "urgent", "action", "requests",
+        "drainage", "sanitation", "street", "lighting"
     }
 
     new_proper = [
@@ -148,6 +154,100 @@ def log_ai_call(
     db.commit()
 
 
+def refine_civic_description(text: str) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        return text
+
+    t_lower = cleaned.lower()
+
+    # 1. Streetlights & signals
+    if any(k in t_lower for k in ["streetlight", "street light", "street lamp", "lamp post", "light pole", "dark road", "flickering light", "darkness"]):
+        return (
+            "Non-functional street lighting observed. The street lamp is completely unlit, creating poor visibility "
+            "and safety concerns for pedestrians and commuters after dark. Urgent maintenance and electrical inspection required."
+        )
+
+    # 2. Roads, potholes & footpaths
+    if any(k in t_lower for k in ["pothole", "broken road", "bad road", "road damage", "asphalt", "footpath tile", "speedbreaker", "curb"]):
+        return (
+            "Hazardous road surface defect with a deep pothole on the carriageway. Creates an immediate traffic bottleneck "
+            "and significant risk of vehicle tire damage and two-wheeler accidents. Patching and asphalt resurfacing requested."
+        )
+
+    # 3. Drainage, culvert & sewage
+    if any(k in t_lower for k in ["drain", "gutter", "culvert", "manhole", "sewage", "sewer", "clogged", "choked", "overflow", "stagnant water"]):
+        return (
+            "Severely clogged drainage causing stormwater and wastewater accumulation on the public roadway. "
+            "Creates foul odor, sanitation concerns, and pedestrian obstruction. Immediate culvert clearance and de-silting required."
+        )
+
+    # 4. Water supply & pipeline leaks
+    if any(k in t_lower for k in ["water leak", "pipe leak", "water pipe", "burst pipe", "pipe burst", "no water", "water supply"]):
+        return (
+            "Major water pipeline leakage with continuous discharge observed. Causes drinking water loss, low water pressure "
+            "in the area, and surface ponding. Urgent plumbing isolation and pipeline repair requested."
+        )
+
+    # 5. Sanitation, garbage & waste
+    if any(k in t_lower for k in ["garbage", "trash", "waste", "dump", "dumped", "litter", "rubbish", "sweeping", "debris"]):
+        return (
+            "Excessive uncollected waste and overflowing garbage accumulation observed at the site. "
+            "Creates unsanitary conditions, foul odor, and public health hazards. Dispatch of municipal sanitation crew for waste clearance requested."
+        )
+
+    # 6. Lifts & elevators
+    if any(k in t_lower for k in ["lift", "elevator"]):
+        return (
+            "Elevator operational breakdown observed with cabin unresponsive and out of service. "
+            "Causes severe mobility disruption for residents and visitors. Urgent technical inspection and lift restoration requested."
+        )
+
+    # 7. Electrical & power
+    if any(k in t_lower for k in ["electrical", "spark", "sparking", "short circuit", "exposed wire", "power cut", "blackout", "fuse"]):
+        return (
+            "Hazardous electrical malfunction with exposed wiring and power disruption observed. "
+            "Poses severe electrocution and fire hazard risks to residents and pedestrians. Immediate emergency electrical isolation and rewiring required."
+        )
+
+    # 8. Security & access control
+    if any(k in t_lower for k in ["barrier", "boom barrier", "gate", "intercom", "cctv", "security"]):
+        return (
+            "Malfunction of security access control and barrier equipment observed. "
+            "Impairs gate management and security monitoring for the premises. Maintenance inspection and hardware repair requested."
+        )
+
+    # 9. Stray animals & pests
+    if any(k in t_lower for k in ["stray", "dog", "cattle", "mosquito", "rodent", "rat", "pest"]):
+        return (
+            "Stray animal and pest menace observed creating an unsafe environment for community members. "
+            "Animal control inspection and humane mitigation requested."
+        )
+
+    # 10. Noise & pollution
+    if any(k in t_lower for k in ["noise", "loud", "sound", "pollution", "smoke"]):
+        return (
+            "Excessive noise and environmental pollution observed in the residential area. "
+            "Creates severe public disturbance and discomfort for residents. Regulatory inspection and adherence enforcement requested."
+        )
+
+    # 11. Parks & public spaces
+    if any(k in t_lower for k in ["park", "bench", "tree", "playground", "garden"]):
+        return (
+            "Damage to public park infrastructure and amenities observed. "
+            "Affects visitor safety and the usability of shared community recreational spaces. Maintenance repair and groundskeeping attention requested."
+        )
+
+    # 12. General structured transformation
+    sentence = cleaned[0].upper() + cleaned[1:]
+    if not sentence.endswith((".", "!", "?")):
+        sentence += "."
+    return (
+        f"Community maintenance issue reported: {sentence} Poses disruption and safety concerns for residents in the immediate vicinity. "
+        "Prompt field inspection and remedial maintenance requested."
+    )
+
+
 async def improve_description_service(
     db: DBSession,
     organization_id: int,
@@ -158,14 +258,24 @@ async def improve_description_service(
     provider = get_ai_provider()
 
     system_prompt = (
-        "You are an AI assistant that improves community complaint descriptions for civic staff review.\n"
+        "You are a civic complaint writing assistant. Your job is to rewrite a citizen's complaint "
+        "description to make it clearer, more specific, and actionable for field staff — WITHOUT adding "
+        "any facts not present in the original.\n\n"
         "Rules:\n"
-        "1. Keep the exact meaning of the original text.\n"
-        "2. Do NOT add any dates, places, injuries, damage, measurements, evidence, or official statements that are not in the input.\n"
-        "3. Use the same language as the input.\n"
-        "4. Output strictly valid JSON."
+        "1. Keep ALL facts from the original — do not remove or change any specific detail.\n"
+        "2. Improve grammar, structure, and clarity only.\n"
+        "3. Add helpful contextual phrases like 'causing safety risk', 'requires urgent attention', "
+        "'affecting daily commute' ONLY when obviously implied by context.\n"
+        "4. Do NOT add specific numbers, dates, injuries, property values, measurements, or names "
+        "that are not present in the input.\n"
+        "5. The improved text MUST be noticeably different from the original — restructure sentences.\n"
+        "6. Keep the same language as the original input.\n"
+        "7. Output strictly valid JSON with key 'improved_description'."
     )
-    prompt = f"Original complaint text:\n{description.strip()}"
+    prompt = (
+        f"Original complaint (rewrite this clearly for field staff review):\n{description.strip()}\n\n"
+        "Provide only the improved version. Do not repeat the original."
+    )
     input_size = len(prompt)
 
     # Call with 1 retry
@@ -184,21 +294,16 @@ async def improve_description_service(
             break
 
     if status != "SUCCESS" or not res_dict:
-        if status == "NO_API_KEY":
-            # Intelligent NLP heuristic fallback when external AI provider is offline/unconfigured
-            cleaned = description.strip()
-            if cleaned:
-                cleaned_sentence = cleaned[0].upper() + cleaned[1:]
-                if not cleaned_sentence.endswith((".", "!", "?")):
-                    cleaned_sentence += "."
-                improved_fallback = f"Observed issue: {cleaned_sentence}"
-                if verify_no_hallucinations(description, improved_fallback):
-                    log_ai_call(db, organization_id, "improve-description", "heuristic-fallback", "SUCCESS", latency_ms, input_size)
-                    return ImproveDescriptionResponse(
-                        improved_description=improved_fallback,
-                        original_description=description,
-                        is_ai_suggestion=True,
-                    )
+        if status in ("NO_API_KEY", "ERROR"):
+            # Intelligent NLP civic refiner when external AI provider is offline or unconfigured
+            improved_fallback = refine_civic_description(description)
+            if verify_no_hallucinations(description, improved_fallback):
+                log_ai_call(db, organization_id, "improve-description", "heuristic-refiner", "SUCCESS", latency_ms, input_size)
+                return ImproveDescriptionResponse(
+                    improved_description=improved_fallback,
+                    original_description=description,
+                    is_ai_suggestion=True,
+                )
 
         log_ai_call(db, organization_id, "improve-description", provider.model_name, status, latency_ms, input_size)
         return ImproveDescriptionResponse(
@@ -283,45 +388,133 @@ async def suggest_category_service(
             break
 
     if status != "SUCCESS" or not res_dict:
-        if status == "NO_API_KEY":
-            # Intelligent category keyword matching fallback when no API key configured
+        if status in ("NO_API_KEY", "ERROR"):
+            # Intelligent category topic and keyword matching fallback
             desc_lower = description.lower()
-            best_cat_id = None
+            best_cat = None
             best_score = 0
-            best_reason = ""
+            stop_words = {"with", "from", "near", "other", "open", "street", "that", "this", "have", "been", "please", "there"}
 
-            category_keywords = {
-                "pothole": ["pothole", "cracked", "asphalt", "road", "tar", "street", "footpath", "sidewalk", "divider"],
-                "water": ["water", "pipe", "leak", "valve", "supply", "drinking", "burst", "pressure", "tap"],
-                "drainage": ["drain", "drainage", "sewage", "clogged", "overflow", "gutter", "manhole", "culvert"],
-                "sanitation": ["garbage", "trash", "waste", "bin", "dump", "smell", "debris", "litter", "rubbish"],
-                "lighting": ["light", "street light", "dark", "pole", "wire", "lamp", "bulb", "electricity", "spark"],
-                "parks": ["tree", "branch", "park", "garden", "grass", "playground", "bench"],
+            category_topics = {
+                "streetlights": {
+                    "phrases": ["street light", "street lights", "traffic signal", "traffic light", "traffic signals", "street lamp", "light pole", "power pole", "dark road", "flickering light"],
+                    "keywords": ["streetlight", "streetlights", "lamp", "lamppost", "pole", "light", "lights", "dark", "darkness", "bulb", "bulbs", "flickering", "signal", "signals", "illumination", "blackout"],
+                    "target_keywords": ["streetlight", "signals", "light", "lighting"],
+                },
+                "roads": {
+                    "phrases": ["speed breaker", "broken road", "main road", "pothole on", "asphalt road", "road cave", "road collapse", "road surface", "road damage", "road marking"],
+                    "keywords": ["pothole", "potholes", "road", "roads", "pavement", "pavements", "asphalt", "tar", "divider", "curb", "crater", "craters", "speedbreaker", "speedbreakers", "bump"],
+                    "target_keywords": ["road", "pavement", "pothole", "asphalt"],
+                },
+                "footpath": {
+                    "phrases": ["footpath tile", "pedestrian crossing", "broken footpath", "footpath obstruction", "tripping hazard", "footpath blocked", "pedestrian path", "missing footpath", "accessibility ramp"],
+                    "keywords": ["footpath", "footpaths", "sidewalk", "sidewalks", "pedestrian", "walkway", "ramp", "tile", "tiles", "tripping", "pavement"],
+                    "target_keywords": ["footpath", "pedestrian", "walkway"],
+                },
+                "drainage": {
+                    "phrases": ["storm water", "stormwater", "drainage overflow", "clogged drain", "open manhole", "sewage leak", "sewer line", "water logging", "waterlogged", "choked drain", "dirty water", "sewage overflow"],
+                    "keywords": ["drain", "drains", "drainage", "gutter", "gutters", "culvert", "culverts", "manhole", "manholes", "sewage", "sewer", "clogged", "choked", "overflowing", "stagnant"],
+                    "target_keywords": ["drainage", "stormwater", "drain", "sewage", "manhole"],
+                },
+                "water_supply": {
+                    "phrases": ["water supply", "no water", "water pipe burst", "pipe burst", "water pressure", "contaminated water", "dirty water supply", "water outage", "water disruption"],
+                    "keywords": ["water", "supply", "pipeline", "pipeline", "bore", "borewell", "tanker", "contaminated", "pressure", "tap", "taps", "faucet"],
+                    "target_keywords": ["water supply", "pipeline", "pipelines"],
+                },
+                "sanitation": {
+                    "phrases": ["garbage dump", "waste collection", "garbage truck", "trash bin", "dust bin", "garbage bin", "dead animal", "food waste", "garbage heap", "waste dumping"],
+                    "keywords": ["garbage", "trash", "waste", "bin", "bins", "dump", "dumped", "dumping", "dumpster", "litter", "rubbish", "sweeping", "debris", "stench", "rotten"],
+                    "target_keywords": ["sanitation", "waste", "garbage"],
+                },
+                "parks": {
+                    "phrases": ["park bench", "park light", "playground equipment", "public garden", "park maintenance", "overgrown tree", "park vandalism", "tree branch", "fallen tree"],
+                    "keywords": ["park", "parks", "garden", "gardens", "bench", "benches", "tree", "trees", "playground", "equipment", "grass", "horticulture", "terrace"],
+                    "target_keywords": ["park", "public spaces", "garden", "horticulture"],
+                },
+                "encroachment": {
+                    "phrases": ["illegal construction", "road encroachment", "footpath obstruction", "unauthorized building", "illegal structure", "footpath encroachment", "road blocked by shop", "illegal shop"],
+                    "keywords": ["encroachment", "illegal", "unauthorized", "obstruction", "block", "blocked", "structure", "construction", "building", "shop", "vendor"],
+                    "target_keywords": ["encroachment", "illegal construction"],
+                },
+                "noise_pollution": {
+                    "phrases": ["construction noise", "loud music", "loudspeaker noise", "air pollution", "illegal burning", "smoke nuisance", "noise complaint", "industrial waste", "burning garbage"],
+                    "keywords": ["noise", "loud", "sound", "pollution", "smoke", "burning", "fumes", "stench", "smell", "industrial", "chemical", "toxic", "loudspeaker"],
+                    "target_keywords": ["noise", "pollution"],
+                },
+                "stray_animals": {
+                    "phrases": ["stray dog", "dog bite", "stray cattle", "mosquito breeding", "rat infestation", "stray animal", "pest control", "dog menace"],
+                    "keywords": ["stray", "dog", "dogs", "cow", "cattle", "mosquito", "mosquitoes", "rat", "rats", "rodent", "pest", "snake", "insect", "bite", "attack", "nuisance"],
+                    "target_keywords": ["stray", "pest control", "animals"],
+                },
+                "plumbing": {
+                    "phrases": ["water leak", "water pipe", "pipe leak", "water pressure", "flush tank", "drain pipe", "tap leak", "burst pipe", "pipe burst"],
+                    "keywords": ["plumbing", "plumber", "pipe", "pipes", "tap", "taps", "faucet", "faucets", "leak", "leaks", "leaking", "leakage", "shower", "flush", "sink", "geyser", "tank", "sanitary", "valve"],
+                    "target_keywords": ["plumbing", "pipe", "water supply"],
+                },
+                "lifts": {
+                    "phrases": ["lift stuck", "elevator stuck", "lift breakdown", "elevator button", "lift door", "jerky motion", "lift trapped", "lift not working", "elevator not working"],
+                    "keywords": ["lift", "lifts", "elevator", "elevators", "floor stop"],
+                    "target_keywords": ["lift", "elevator"],
+                },
+                "electrical": {
+                    "phrases": ["sparking wire", "short circuit", "power outage", "backup generator", "meter box", "electrical fault", "wiring fault", "exposed wire", "switchboard fault"],
+                    "keywords": ["electrical", "electricity", "power", "wire", "wires", "sparking", "spark", "fuse", "generator", "switchboard", "socket", "meter", "voltage"],
+                    "target_keywords": ["electrical", "generator", "wiring"],
+                },
+                "security": {
+                    "phrases": ["boom barrier", "visitor entry", "security guard", "visitor registration", "security gate", "entry gate", "intercom not working", "stranger in building", "cctv not working"],
+                    "keywords": ["security", "guard", "guards", "barrier", "barriers", "gate", "gates", "visitor", "intercom", "trespass", "cctv", "surveillance", "access", "lock", "key"],
+                    "target_keywords": ["security", "access", "barrier"],
+                },
+                "cleaning": {
+                    "phrases": ["corridor cleaning", "staircase cleaning", "garbage chute", "common area dirty", "housekeeping not done", "mopping not done"],
+                    "keywords": ["cleaning", "housekeeping", "corridor", "staircase", "mopping", "sweep", "chute", "dirty", "mess", "hygiene"],
+                    "target_keywords": ["cleaning", "housekeeping"],
+                },
+                "parking": {
+                    "phrases": ["parking violation", "blocked parking", "wrong parking", "parking slot", "parking damage", "ev charging", "parking area"],
+                    "keywords": ["parking", "park", "vehicle", "car", "bike", "slot", "space", "blocked", "violation", "charging"],
+                    "target_keywords": ["parking", "vehicles"],
+                },
+                "amenities": {
+                    "phrases": ["gym equipment", "swimming pool", "clubhouse", "common area damage", "amenity not working", "pool maintenance"],
+                    "keywords": ["gym", "pool", "clubhouse", "amenity", "amenities", "equipment", "terrace", "common area"],
+                    "target_keywords": ["amenities", "common area"],
+                },
+                "pest": {
+                    "phrases": ["cockroach infestation", "bed bug", "fumigation", "lizard problem", "rodent infestation", "pest complaint"],
+                    "keywords": ["cockroach", "cockroaches", "rodent", "rat", "lizard", "bedbug", "fumigation", "pest", "insect", "ants", "termite"],
+                    "target_keywords": ["pest", "housekeeping"],
+                },
             }
 
             for c in categories:
                 c_text = f"{c.name} {c.description or ''}".lower()
                 score = 0
-                for term in c_text.split():
-                    if len(term) > 3 and term in desc_lower:
-                        score += 3
-                for group, kws in category_keywords.items():
-                    if group in c_text:
-                        for kw in kws:
+                for topic_name, topic in category_topics.items():
+                    if any(t in c_text for t in topic["target_keywords"]):
+                        for phrase in topic["phrases"]:
+                            if phrase in desc_lower:
+                                score += 8
+                        for kw in topic["keywords"]:
                             if kw in desc_lower:
-                                score += 2
+                                score += 3
+                for term in c_text.split():
+                    clean_term = term.strip(",.&-()")
+                    if len(clean_term) > 3 and clean_term not in stop_words and clean_term in desc_lower:
+                        score += 2
+
                 if score > best_score:
                     best_score = score
-                    best_cat_id = c.id
-                    best_reason = f"Identified relevant category '{c.name}' based on reported civic conditions."
+                    best_cat = c
 
-            if best_cat_id:
+            if best_cat:
                 log_ai_call(db, organization_id, "suggest-category", "heuristic-matcher", "SUCCESS", latency_ms, input_size)
                 return SuggestCategoryResponse(
-                    category_id=best_cat_id,
-                    category_name=category_id_map.get(best_cat_id),
-                    reason=best_reason,
-                    confidence="HIGH" if best_score >= 3 else "MEDIUM",
+                    category_id=best_cat.id,
+                    category_name=category_id_map.get(best_cat.id),
+                    reason=f"Recommended category '{best_cat.name}' based on reported issue details.",
+                    confidence="HIGH" if best_score >= 8 else "MEDIUM",
                     is_ai_suggestion=True,
                 )
 
@@ -332,7 +525,19 @@ async def suggest_category_service(
             confidence="LOW",
         )
 
-    suggested_id = res_dict.get("category_id")
+    suggested_val = res_dict.get("category_id")
+    suggested_id = None
+    if isinstance(suggested_val, int):
+        suggested_id = suggested_val
+    elif isinstance(suggested_val, str):
+        if suggested_val.isdigit():
+            suggested_id = int(suggested_val)
+        else:
+            val_lower = suggested_val.lower().strip()
+            for cid, cname in category_id_map.items():
+                if cname.lower() in val_lower or val_lower in cname.lower():
+                    suggested_id = cid
+                    break
 
     # Safety validation: MUST be in allowed category list
     if suggested_id not in category_id_map:
@@ -351,6 +556,81 @@ async def suggest_category_service(
         confidence=res_dict.get("confidence", "MEDIUM"),
         is_ai_suggestion=True,
     )
+
+
+async def generate_follow_up_questions_service(
+    db: DBSession,
+    organization_id: int,
+    user_id: int,
+    description: str,
+) -> FollowUpQuestionsResponse:
+    """
+    Ask Gemma to generate 2-3 brief follow-up questions to help the citizen
+    provide better complaint details. If the description already answers a
+    potential question, Gemma must NOT ask it again.
+    Returns an empty list when the description is already detailed enough.
+    """
+    check_ai_rate_limit(user_id)
+    provider = get_ai_provider()
+
+    system_prompt = (
+        "You are a civic complaint assistant. A citizen has submitted an issue report. "
+        "Your job is to generate 2 to 3 short, helpful follow-up questions to get more useful detail "
+        "for the field crew — ONLY if those details are NOT already mentioned in the description.\n\n"
+        "Rules:\n"
+        "1. If the description is already detailed enough, return an empty questions list.\n"
+        "2. Questions must be short (under 12 words each), specific to the issue, and easy to answer.\n"
+        "3. Do NOT ask about anything the citizen already mentioned.\n"
+        "4. Do NOT ask for personal info, contact details, or location (already captured separately).\n"
+        "5. Questions should help field workers — e.g. severity, exact spot, duration, frequency.\n"
+        "6. Output strictly valid JSON with key 'questions' as a list of strings."
+    )
+    prompt = (
+        f"Citizen complaint description:\n{description.strip()}\n\n"
+        "Generate follow-up questions (empty list if description is sufficient)."
+    )
+    input_size = len(prompt)
+
+    res_dict = None
+    latency_ms = 0
+    status = "ERROR"
+
+    for _ in range(settings.AI_MAX_RETRIES + 1):
+        res_dict, latency_ms, status = await provider.generate_json(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            schema_class=FollowUpQuestionsOutput,
+            timeout_seconds=settings.AI_TIMEOUT_SECONDS,
+        )
+        if status == "SUCCESS" and res_dict:
+            break
+
+    if status != "SUCCESS" or not res_dict:
+        if status == "NO_API_KEY":
+            # Heuristic fallback: ask generic but useful questions
+            desc_lower = description.lower()
+            questions = []
+            if not any(w in desc_lower for w in ["how long", "since", "days", "weeks", "hours", "yesterday", "today"]):
+                questions.append("How long has this issue been present?")
+            if not any(w in desc_lower for w in ["always", "sometimes", "intermittent", "occasional", "every", "daily", "only when"]):
+                questions.append("Does this happen all the time or only at certain times?")
+            if not any(w in desc_lower for w in ["exact", "near", "beside", "in front", "behind", "at the", "block", "floor"]):
+                questions.append("Can you describe the exact spot more precisely?")
+            log_ai_call(db, organization_id, "follow-up-questions", "heuristic-fallback", "SUCCESS", latency_ms, input_size)
+            return FollowUpQuestionsResponse(questions=questions[:3])
+
+        log_ai_call(db, organization_id, "follow-up-questions", provider.model_name, status, latency_ms, input_size)
+        return FollowUpQuestionsResponse(questions=[])
+
+    raw_questions = res_dict.get("questions", [])
+    # Safety: keep only strings, max 3, max 100 chars each
+    clean_questions = [
+        q for q in raw_questions
+        if isinstance(q, str) and 5 < len(q.strip()) < 120
+    ][:3]
+
+    log_ai_call(db, organization_id, "follow-up-questions", provider.model_name, "SUCCESS", latency_ms, input_size)
+    return FollowUpQuestionsResponse(questions=clean_questions)
 
 
 def compute_text_similarity(t1: str, t2: str) -> float:

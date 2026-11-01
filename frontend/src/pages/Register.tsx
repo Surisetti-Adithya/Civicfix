@@ -2,13 +2,20 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { apiRequest } from '../api/client';
 import { Organization, PaginatedResponse } from '../types';
+import { Eye, EyeOff } from 'lucide-react';
+import { LocationPicker } from '../components/LocationPicker';
+import { AddressAutocomplete } from '../components/AddressAutocomplete';
 
 export default function Register({ onLoginClick, onSuccess }: { onLoginClick: () => void; onSuccess: () => void }) {
   const { register } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [permanentLocation, setPermanentLocation] = useState('');
+  const [regLat, setRegLat] = useState<number>(12.9716);
+  const [regLng, setRegLng] = useState<number>(77.5946);
+  const [geoStatus, setGeoStatus] = useState('');
   const [orgId, setOrgId] = useState<number | undefined>(undefined);
   const [role, setRole] = useState('CITIZEN');
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -26,12 +33,14 @@ export default function Register({ onLoginClick, onSuccess }: { onLoginClick: ()
       .catch(() => {});
   }, []);
 
+  // No debounced geocode needed – AddressAutocomplete handles it via suggestion selection
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await register(email, password, fullName, orgId, role, permanentLocation);
+      await register(email, password, fullName, orgId, role, permanentLocation, regLat, regLng);
       onSuccess();
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please check your information.');
@@ -41,7 +50,7 @@ export default function Register({ onLoginClick, onSuccess }: { onLoginClick: ()
   };
 
   return (
-    <div style={{ maxWidth: '440px', margin: '3rem auto', padding: '2rem', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+    <div style={{ maxWidth: '520px', margin: '2rem auto', padding: '2rem', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
       <h2 style={{ marginBottom: '1.5rem', fontSize: '1.5rem', textAlign: 'center' }}>Create a CivicFix Account</h2>
 
       {error && (
@@ -61,23 +70,50 @@ export default function Register({ onLoginClick, onSuccess }: { onLoginClick: ()
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             required
-            style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+            style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }}
           />
         </div>
 
         <div>
-          <label htmlFor="reg-location" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 600 }}>
-            Permanent Location / Address
-          </label>
-          <input
-            id="reg-location"
-            type="text"
-            value={permanentLocation}
-            onChange={(e) => setPermanentLocation(e.target.value)}
-            placeholder="e.g., 4th Cross, 5th Main, Indiranagar"
-            required
-            style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }}
-          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+            <label htmlFor="reg-location" style={{ fontSize: '0.875rem', fontWeight: 600 }}>
+              Permanent Location / Address
+            </label>
+            {geoStatus && (
+              <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>
+                {geoStatus}
+              </span>
+            )}
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <AddressAutocomplete
+              id="reg-location"
+              value={permanentLocation}
+              onChange={setPermanentLocation}
+              onLocationSelect={(lat, lng, name) => {
+                setRegLat(lat);
+                setRegLng(lng);
+                setGeoStatus(`📍 ${name.split(',')[0]}`);
+              }}
+              placeholder="e.g., 4th Cross, 5th Main, Indiranagar"
+              required
+            />
+          </div>
+          <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginBottom: '0.5rem' }}>
+            Type your address to see suggestions and auto-move the map pin. You can also drag the pin directly.
+          </span>
+          <div style={{ borderRadius: '6px', overflow: 'hidden', border: '1px solid #cbd5e1' }}>
+            <LocationPicker
+              latitude={regLat}
+              longitude={regLng}
+              onChange={(lat, lng) => {
+                setRegLat(lat);
+                setRegLng(lng);
+                setGeoStatus(`📍 Pinned to: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+              }}
+              height="180px"
+            />
+          </div>
         </div>
 
         <div>
@@ -90,7 +126,7 @@ export default function Register({ onLoginClick, onSuccess }: { onLoginClick: ()
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+            style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }}
           />
         </div>
 
@@ -98,15 +134,37 @@ export default function Register({ onLoginClick, onSuccess }: { onLoginClick: ()
           <label htmlFor="reg-password" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 600 }}>
             Password (at least 8 characters)
           </label>
-          <input
-            id="reg-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={8}
-            style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }}
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              id="reg-password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              style={{ width: '100%', padding: '0.5rem 2.5rem 0.5rem 0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#64748b',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '4px',
+              }}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
         </div>
 
         {organizations.length > 0 && (

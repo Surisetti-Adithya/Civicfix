@@ -9,7 +9,7 @@ interface AuthContextType {
   memberships: Membership[];
   token: string | null;
   login: (email: string, pass: string, orgId?: number) => Promise<void>;
-  register: (email: string, pass: string, fullName: string, orgId?: number, role?: string, permanentLocation?: string) => Promise<void>;
+  register: (email: string, pass: string, fullName: string, orgId?: number, role?: string, permanentLocation?: string, homeLat?: number | null, homeLng?: number | null) => Promise<void>;
   updateProfile: (profile: { full_name?: string; phone_number?: string; permanent_location?: string; home_latitude?: number | null; home_longitude?: number | null }) => Promise<void>;
   logout: () => Promise<void>;
   switchOrg: (orgId: number) => Promise<void>;
@@ -76,11 +76,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     applySession(data);
   };
 
-  const register = async (email: string, pass: string, fullName: string, orgId?: number, role?: string, permanentLocation?: string) => {
+  const register = async (email: string, pass: string, fullName: string, orgId?: number, role?: string, permanentLocation?: string, homeLat?: number | null, homeLng?: number | null) => {
     const payload: any = { email, password: pass, full_name: fullName };
     if (orgId) payload.organization_id = orgId;
     if (role) payload.role = role;
     if (permanentLocation) payload.permanent_location = permanentLocation;
+    if (homeLat !== undefined && homeLat !== null) payload.home_latitude = homeLat;
+    if (homeLng !== undefined && homeLng !== null) payload.home_longitude = homeLng;
     const data = await apiRequest<SessionResponse>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(payload),

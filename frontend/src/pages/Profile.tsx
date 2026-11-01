@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import ComplaintList from './ComplaintList';
 import { TrustBadge } from '../components/TrustBadge';
 import { LocationPicker } from '../components/LocationPicker';
+import { AddressAutocomplete } from '../components/AddressAutocomplete';
 import { Award, CheckCircle, ShieldAlert, Send } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import { CitizenAppealItem } from '../types';
@@ -18,6 +19,8 @@ export default function Profile({ onSelectComplaint }: ProfileProps) {
   const [permanentLocation, setPermanentLocation] = useState(user?.permanent_location || '');
   const [homeLat, setHomeLat] = useState<number | null>(user?.home_latitude ?? 12.9716);
   const [homeLng, setHomeLng] = useState<number | null>(user?.home_longitude ?? 77.5946);
+  const [_geocoding, _setGeocoding] = useState(false);
+  const [geoStatus, setGeoStatus] = useState('');
 
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
@@ -56,6 +59,16 @@ export default function Profile({ onSelectComplaint }: ProfileProps) {
       fetchMyAppeals();
     }
   }, [user]);
+
+  // Automatically geocode address when user edits permanent location in profile
+  // AddressAutocomplete handles this via suggestion selection; fallback effect retained for manual typing
+  useEffect(() => {
+    if (!permanentLocation.trim() || permanentLocation.trim().length < 4) {
+      setGeoStatus('');
+      return;
+    }
+    return undefined;
+  }, [permanentLocation]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -301,16 +314,29 @@ export default function Profile({ onSelectComplaint }: ProfileProps) {
             </div>
 
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
-                Address / Permanent Location
-              </label>
-              <input
-                type="text"
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
+                  Address / Permanent Location
+                </label>
+                {geoStatus && (
+                  <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>
+                    {geoStatus}
+                  </span>
+                )}
+              </div>
+              <AddressAutocomplete
                 value={permanentLocation}
-                onChange={(e) => setPermanentLocation(e.target.value)}
+                onChange={setPermanentLocation}
+                onLocationSelect={(lat, lng, name) => {
+                  setHomeLat(lat);
+                  setHomeLng(lng);
+                  setGeoStatus(`📍 ${name.split(',')[0]}`);
+                }}
                 placeholder="Street address or ward location"
-                style={{ width: '100%', padding: '8px 10px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.875rem', boxSizing: 'border-box' }}
               />
+              <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '3px' }}>
+                Type to get address suggestions and auto-move the map pin. You can also drag the pin directly.
+              </span>
             </div>
 
             <div style={{ gridColumn: '1 / -1' }}>

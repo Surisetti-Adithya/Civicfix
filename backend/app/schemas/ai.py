@@ -36,6 +36,19 @@ class SuggestCategoryResponse(BaseModel):
     is_ai_suggestion: bool = True
 
 
+class FollowUpQuestionsRequest(BaseModel):
+    description: str = Field(..., min_length=5, max_length=1500)
+
+
+class FollowUpQuestionsOutput(BaseModel):
+    questions: List[str]
+
+
+class FollowUpQuestionsResponse(BaseModel):
+    questions: List[str]
+    is_ai_suggestion: bool = True
+
+
 class DuplicateCandidateRequest(BaseModel):
     description: str = Field(..., min_length=5, max_length=1500)
     category_id: Optional[int] = None
@@ -74,3 +87,4 @@ class AiStatusResponse(BaseModel):
     is_configured: bool
     timeout_seconds: float
     max_retries: int
+

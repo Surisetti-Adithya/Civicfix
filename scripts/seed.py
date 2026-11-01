@@ -132,10 +132,16 @@ def seed_database():
         # 4. Categories & Teams for Municipality
         print("  - Configuring municipality categories and teams...")
         muni_cats = [
-            ("Roads & Pavements", "Potholes, broken footpaths, speed breakers"),
-            ("Drainage & Stormwater", "Clogged drains, culverts, street water accumulation"),
-            ("Sanitation & Waste", "Garbage collection, public bins, sweeping"),
-            ("Streetlights & Signals", "Non-functional lights, traffic signal outages"),
+            ("Roads & Pavements", "Potholes, cracked roads, broken footpaths, speed breakers, asphalt damage, road cave-in"),
+            ("Drainage & Stormwater", "Clogged drains, overflowing manholes, culverts, gutter flooding, street water accumulation, waterlogging"),
+            ("Sanitation & Waste", "Garbage collection, public bins overflow, sweeping, dead animal removal, litter, waste dumping"),
+            ("Streetlights & Signals", "Non-functional street lights, flickering lamps, traffic signal outages, pole damage, dark roads"),
+            ("Water Supply & Pipelines", "Water pipe burst, supply disruption, contaminated water, no water supply, low water pressure"),
+            ("Parks & Public Spaces", "Park maintenance, bench damage, playground equipment broken, overgrown trees, public garden upkeep"),
+            ("Encroachment & Illegal Construction", "Illegal structures, road encroachment, footpath obstruction, unauthorized building activity"),
+            ("Noise & Pollution", "Construction noise, loudspeaker nuisance, air pollution, smoke, illegal burning, industrial waste"),
+            ("Footpath & Pedestrian Safety", "Broken footpath tiles, missing footpath, footpath obstruction, accessibility ramp damage, tripping hazard"),
+            ("Stray Animals & Pest Control", "Stray dog attack, stray cattle, mosquito breeding, rodent infestation, pest nuisance, dog bite"),
         ]
         muni_cat_map = {}
         for cname, cdesc in muni_cats:
@@ -151,6 +157,12 @@ def seed_database():
             ("Drainage & Culvert Unit", "Stormwater and gutter clearance squad"),
             ("Solid Waste Operations", "Sanitation vehicles and collectors"),
             ("Electrical Maintenance Cell", "Street illumination and wiring division"),
+            ("Water & Pipelines Unit", "Pipeline repair and water supply crew"),
+            ("Parks & Horticulture Cell", "Park maintenance and tree-trimming squad"),
+            ("Anti-Encroachment Squad", "Illegal construction and encroachment removal"),
+            ("Pollution Control Unit", "Noise and pollution complaint responders"),
+            ("Footpath Maintenance Crew", "Footpath tile repair and pedestrian safety"),
+            ("Veterinary & Pest Control", "Stray animal management and pest control"),
         ]
         muni_team_map = {}
         for tname, tdesc in muni_teams:
@@ -167,8 +179,16 @@ def seed_database():
             ("Drainage & Stormwater", "Drainage & Culvert Unit"),
             ("Sanitation & Waste", "Solid Waste Operations"),
             ("Streetlights & Signals", "Electrical Maintenance Cell"),
+            ("Water Supply & Pipelines", "Water & Pipelines Unit"),
+            ("Parks & Public Spaces", "Parks & Horticulture Cell"),
+            ("Encroachment & Illegal Construction", "Anti-Encroachment Squad"),
+            ("Noise & Pollution", "Pollution Control Unit"),
+            ("Footpath & Pedestrian Safety", "Footpath Maintenance Crew"),
+            ("Stray Animals & Pest Control", "Veterinary & Pest Control"),
         ]
         for cname, tname in routing_pairs_muni:
+            if cname not in muni_cat_map or tname not in muni_team_map:
+                continue
             cid = muni_cat_map[cname].id
             tid = muni_team_map[tname].id
             if not db.query(CategoryTeamMap).filter(CategoryTeamMap.organization_id == muni_org.id, CategoryTeamMap.category_id == cid).first():
@@ -177,11 +197,14 @@ def seed_database():
         # 5. Categories & Teams for Apartment Community
         print("  - Configuring apartment categories and teams...")
         apt_cats = [
-            ("Plumbing", "Water supply, pipe leaks, sanitary fittings"),
-            ("Lifts & Elevators", "Lift breakdown, buttons, jerky motion"),
-            ("Cleaning & Housekeeping", "Corridor mopping, garbage chutes, staircase cleaning"),
-            ("Electrical", "Common area lighting, backup generators, meters"),
-            ("Security & Access", "Boom barriers, intercom, visitor registration"),
+            ("Plumbing", "Water supply, pipe leaks, sanitary fittings, flush tank, tap leakage"),
+            ("Lifts & Elevators", "Lift breakdown, floor-stop failure, jerky motion, lift door malfunction"),
+            ("Cleaning & Housekeeping", "Corridor mopping, garbage chutes, staircase cleaning, common area hygiene"),
+            ("Electrical", "Common area lighting, backup generators, meters, sparking wires, power outage"),
+            ("Security & Access", "Boom barriers, intercom failure, visitor registration, CCTV, gate security"),
+            ("Parking & Vehicles", "Parking violations, blocked entrance, damaged parking structure, EV charging"),
+            ("Common Area & Amenities", "Gym equipment, swimming pool, clubhouse, terrace access, common area damage"),
+            ("Pest & Housekeeping", "Cockroaches, rodents, lizards, bed bugs, fumigation request, mosquito breeding"),
         ]
         apt_cat_map = {}
         for cname, cdesc in apt_cats:
@@ -198,6 +221,9 @@ def seed_database():
             ("Housekeeping Crew", "Daily cleaning staff"),
             ("Facility Electrical Team", "Electricians on call"),
             ("Gate Security Force", "Security supervisors and guards"),
+            ("Parking Management Cell", "Parking enforcement and vehicle management"),
+            ("Amenities Maintenance Team", "Gym, pool, and clubhouse upkeep crew"),
+            ("Pest Control Team", "Professional pest control and fumigation"),
         ]
         apt_team_map = {}
         for tname, tdesc in apt_teams:
@@ -214,8 +240,13 @@ def seed_database():
             ("Cleaning & Housekeeping", "Housekeeping Crew"),
             ("Electrical", "Facility Electrical Team"),
             ("Security & Access", "Gate Security Force"),
+            ("Parking & Vehicles", "Parking Management Cell"),
+            ("Common Area & Amenities", "Amenities Maintenance Team"),
+            ("Pest & Housekeeping", "Pest Control Team"),
         ]
         for cname, tname in routing_pairs_apt:
+            if cname not in apt_cat_map or tname not in apt_team_map:
+                continue
             cid = apt_cat_map[cname].id
             tid = apt_team_map[tname].id
             if not db.query(CategoryTeamMap).filter(CategoryTeamMap.organization_id == apt_org.id, CategoryTeamMap.category_id == cid).first():

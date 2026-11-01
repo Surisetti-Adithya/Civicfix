@@ -10,6 +10,8 @@ from backend.app.schemas.ai import (
     ImproveDescriptionResponse,
     SuggestCategoryRequest,
     SuggestCategoryResponse,
+    FollowUpQuestionsRequest,
+    FollowUpQuestionsResponse,
     DuplicateCandidateRequest,
     DuplicateCandidateResponse,
     AiStatusResponse,
@@ -17,6 +19,7 @@ from backend.app.schemas.ai import (
 from backend.app.services.ai.service import (
     improve_description_service,
     suggest_category_service,
+    generate_follow_up_questions_service,
     find_duplicate_candidates_service,
 )
 
@@ -70,6 +73,21 @@ async def suggest_category(
     )
 
 
+@router.post("/follow-up-questions", response_model=FollowUpQuestionsResponse)
+async def follow_up_questions(
+    payload: FollowUpQuestionsRequest,
+    db: DBSession = Depends(get_db),
+    ctx: ActiveOrgContext = Depends(get_active_org_context),
+):
+    """Generate 2-3 targeted follow-up questions Gemma wants the citizen to answer."""
+    return await generate_follow_up_questions_service(
+        db=db,
+        organization_id=ctx.organization_id,
+        user_id=ctx.user.id,
+        description=payload.description,
+    )
+
+
 @router.post("/duplicate-candidates", response_model=DuplicateCandidateResponse)
 async def duplicate_candidates(
     payload: DuplicateCandidateRequest,
@@ -85,3 +103,4 @@ async def duplicate_candidates(
         location_text=payload.location_text,
         limit=payload.limit,
     )
+

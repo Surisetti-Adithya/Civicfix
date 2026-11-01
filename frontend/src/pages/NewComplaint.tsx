@@ -3,6 +3,8 @@ import { apiRequest } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { Category, Complaint } from '../types';
 import { LocationPicker } from '../components/LocationPicker';
+import { AddressAutocomplete } from '../components/AddressAutocomplete';
+import { Sparkles, Loader2, CheckCircle2 } from 'lucide-react';
 
 interface NewComplaintProps {
   onSuccess: (complaintId: number) => void;
@@ -24,7 +26,11 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
 
   // AI Assistance states
   const [aiLoading, setAiLoading] = useState(false);
+  const [categorySuggesting, setCategorySuggesting] = useState(false);
+  const [categorySuggestedText, setCategorySuggestedText] = useState('');
   const [aiSuccessMessage, setAiSuccessMessage] = useState('');
+  const [geocodingLoc, _setGeocodingLoc] = useState(false);
+  const [geoLocStatus, setGeoLocStatus] = useState('');
 
   // 1. Automatically fill address and map coordinates from user profile
   useEffect(() => {
@@ -36,6 +42,15 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
     }
   }, [user]);
 
+  // Automatically geocode when citizen changes location / address text (kept for manual typing fallback)
+  useEffect(() => {
+    if (!locationText.trim() || locationText.trim().length < 3) {
+      setGeoLocStatus('');
+      return;
+    }
+    return undefined; // AddressAutocomplete now handles geocoding on selection
+  }, [locationText]);
+
   useEffect(() => {
     apiRequest<Category[]>('/categories')
       .then((data) => {
@@ -46,6 +61,34 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
       })
       .catch(() => {});
   }, []);
+
+  // Dedicated single-click Category Recommendation with AI
+  const handleSuggestCategoryOnly = async () => {
+    if (!description.trim()) {
+      setError('Please type an issue description first so AI can suggest the best category.');
+      return;
+    }
+    setCategorySuggesting(true);
+    setError('');
+    try {
+      const res = await apiRequest<{ category_id: number | null; category_name?: string; reason: string; confidence: string }>('/ai/suggest-category', {
+        method: 'POST',
+        body: JSON.stringify({ description }),
+      });
+      if (res.category_id) {
+        setCategoryId(res.category_id);
+        const name = res.category_name || categories.find((c) => c.id === res.category_id)?.name || 'Matching category';
+        setCategorySuggestedText(`AI Recommended: ${name}`);
+        setAiSuccessMessage(`✨ AI recommended category '${name}' (${res.confidence} confidence). ${res.reason || ''}`);
+      } else {
+        setError('AI could not determine a specific category. Please select one manually from the list.');
+      }
+    } catch {
+      setError('Category suggestion currently unavailable. Please select manually.');
+    } finally {
+      setCategorySuggesting(false);
+    }
+  };
 
   // 4. Single "Done" button that triggers both clarity improvement and category recommendation
   const handleDoneWithAI = async () => {
@@ -80,6 +123,8 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
 
       if (categoryRes.status === 'fulfilled' && categoryRes.value.category_id) {
         setCategoryId(categoryRes.value.category_id);
+        const name = categoryRes.value.category_name || categories.find((c) => c.id === categoryRes.value.category_id)?.name || 'Matching category';
+        setCategorySuggestedText(`AI Recommended: ${name}`);
         categoryApplied = true;
       }
 
@@ -224,24 +269,72 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
                 fontWeight: 600,
                 cursor: description.trim() ? 'pointer' : 'not-allowed',
                 opacity: description.trim() ? 1 : 0.6,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
               }}
             >
-              {aiLoading ? 'Processing with AI...' : 'Done'}
+              {aiLoading ? (
+                <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Processing with Gemma...</>
+              ) : (
+                <><Sparkles size={14} /> Done — Refine with Gemma AI</>
+              )}
             </button>
             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-              Click Done to refine clarity and automatically select the appropriate category.
+              Gemma will improve clarity and auto-select the right category.
             </span>
           </div>
         </div>
 
         <div>
-          <label htmlFor="category" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 600 }}>
-            Category *
-          </label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+            <label htmlFor="category" style={{ fontSize: '0.875rem', fontWeight: 600 }}>
+              Category *
+            </label>
+            <button
+              type="button"
+              onClick={handleSuggestCategoryOnly}
+              disabled={categorySuggesting || !description.trim()}
+              style={{
+                padding: '4px 10px',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                color: '#1d4ed8',
+                backgroundColor: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: '4px',
+                cursor: description.trim() && !categorySuggesting ? 'pointer' : 'not-allowed',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              {categorySuggesting ? (
+                <>
+                  <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                  <span>Analyzing...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={13} />
+                  <span>AI Suggest Category</span>
+                </>
+              )}
+            </button>
+          </div>
+          {categorySuggestedText && (
+            <div style={{ marginBottom: '0.35rem', fontSize: '0.75rem', color: '#15803d', fontWeight: 600, background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '4px 8px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <CheckCircle2 size={14} />
+              <span>{categorySuggestedText}</span>
+            </div>
+          )}
           <select
             id="category"
             value={categoryId || ''}
-            onChange={(e) => setCategoryId(Number(e.target.value))}
+            onChange={(e) => {
+              setCategoryId(Number(e.target.value));
+              setCategorySuggestedText('');
+            }}
             required
             style={{ width: '100%', padding: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.875rem' }}
           >
@@ -258,7 +351,7 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
             Problem Location on Map *
           </label>
           <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginBottom: '0.5rem' }}>
-            Cursor defaults to your home location. Drag the red pin or click anywhere on the map to pinpoint the exact issue location.
+            Cursor defaults to your home location. Drag the red pin, click on the map, or type an address below to auto-position the pin.
           </span>
           <LocationPicker
             latitude={latitude}
@@ -274,20 +367,35 @@ export default function NewComplaint({ onSuccess, onCancel }: NewComplaintProps)
         </div>
 
         <div>
-          <label htmlFor="location" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 600 }}>
-            Location / Address *
-          </label>
-          <input
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+            <label htmlFor="location" style={{ fontSize: '0.875rem', fontWeight: 600 }}>
+              Location / Address *
+            </label>
+            {geocodingLoc && (
+              <span style={{ fontSize: '0.75rem', color: '#2563eb' }}>
+                🔍 Updating map pointer...
+              </span>
+            )}
+            {!geocodingLoc && geoLocStatus && (
+              <span style={{ fontSize: '0.75rem', color: '#16a34a' }}>
+                {geoLocStatus}
+              </span>
+            )}
+          </div>
+          <AddressAutocomplete
             id="location"
-            type="text"
             value={locationText}
-            onChange={(e) => setLocationText(e.target.value)}
+            onChange={setLocationText}
+            onLocationSelect={(lat, lng) => {
+              setLatitude(lat);
+              setLongitude(lng);
+              setGeoLocStatus(`📍 Pinned to: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+            }}
             required
             placeholder="Street address, flat number, or landmark..."
-            style={{ width: '100%', padding: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.875rem' }}
           />
-          <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginTop: '2px' }}>
-            Pre-filled from your registered permanent location. You can modify it for this specific report if needed.
+          <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginTop: '3px' }}>
+            Type to get address suggestions — map pin moves automatically. You can also drag the pin on the map.
           </span>
         </div>
 

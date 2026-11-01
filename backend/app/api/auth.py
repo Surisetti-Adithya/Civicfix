@@ -82,6 +82,8 @@ def register(payload: UserRegister, db: DBSession = Depends(get_db)):
         full_name=payload.full_name.strip(),
         phone_number=payload.phone_number,
         permanent_location=payload.permanent_location.strip() if payload.permanent_location else None,
+        home_latitude=payload.home_latitude,
+        home_longitude=payload.home_longitude,
         is_active=True,
     )
     db.add(user)
